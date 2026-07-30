@@ -1,3 +1,5 @@
+import os
+
 from lingjiyidong.agent import Agent
 
 _RESET = "\033[0m"
@@ -41,8 +43,10 @@ def _print_banner():
 
 
 def main():
-    agent = Agent()
+    agent = Agent(cwd=os.getcwd())
     _print_banner()
+    print(f"  {_DIM}工作目录: {os.getcwd()}{_RESET}")
+    print()
     while True:
         user_input = input("\nYou: ").strip()
         if not user_input:
