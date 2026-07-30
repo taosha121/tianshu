@@ -26,7 +26,7 @@ def _build_system_prompt(cwd: str) -> str:
     ]
 
     _SKIP_DIRS = {".venv", "venv", "__pycache__", "dist", "build", "node_modules", ".git", "vendor", "site-packages"}
-    _MAX_OUTLINE_CHARS = 2000
+    _MAX_OUTLINE_CHARS = 500
 
     p = Path(cwd)
     project_type = "unknown"
@@ -191,6 +191,9 @@ class Agent:
                     continue
                 tool = TOOL_MAP.get(block.name)
                 result = tool.func(**block.input) if tool else f"未知工具: {block.name}"
+                _MAX_RESULT = 20_000
+                if len(result) > _MAX_RESULT:
+                    result = result[:_MAX_RESULT] + f"\n\n[结果过长，已截断至 {_MAX_RESULT} 字符，使用 start_line/end_line 参数读取剩余部分]"
                 preview = result if len(result) <= 100 else result[:100] + "..."
                 print(f"  [工具调用] {block.name}({block.input}) → {preview}")
                 tool_results.append({

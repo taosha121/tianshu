@@ -1,7 +1,7 @@
 import json
 from typing import Any
 
-_CHARS_PER_TOKEN = 3.0
+_CHARS_PER_TOKEN = 1.5
 
 
 def _estimate_tokens(messages: list[dict]) -> int:
@@ -22,7 +22,7 @@ def _estimate_tokens(messages: list[dict]) -> int:
 class ContextManager:
     def __init__(
         self,
-        max_tokens: int = 100_000,
+        max_tokens: int = 80_000,
         compress_threshold: float = 0.75,
         min_window: int = 4,
     ):
