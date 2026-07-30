@@ -3,8 +3,9 @@ import os
 import anthropic
 from dotenv import load_dotenv
 
-from agent.memory import ContextManager, LongTermMemory
-from agent.tools import TOOLS, TOOL_MAP
+from lingjiyidong.agent.memory import ContextManager, LongTermMemory
+from lingjiyidong.agent.planner import Planner, PlanExecutor
+from lingjiyidong.agent.tools import TOOLS, TOOL_MAP
 
 load_dotenv()
 
@@ -33,7 +34,7 @@ class Agent:
         for _ in range(_MAX_ITERATIONS):
             response = self.client.messages.create(
                 model=self.model,
-                max_tokens=1024,
+                max_tokens=8192,
                 system=system,
                 messages=self.history,
                 tools=_TOOL_SCHEMAS,
@@ -64,7 +65,8 @@ class Agent:
                     continue
                 tool = TOOL_MAP.get(block.name)
                 result = tool.func(**block.input) if tool else f"未知工具: {block.name}"
-                print(f"  [工具调用] {block.name}({block.input}) → {result}")
+                preview = result if len(result) <= 100 else result[:100] + "..."
+                print(f"  [工具调用] {block.name}({block.input}) → {preview}")
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": block.id,
@@ -74,3 +76,9 @@ class Agent:
             self.history.append({"role": "user", "content": tool_results})
 
         return "已达到最大迭代次数，未能完成任务。"
+
+    def execute(self, goal: str) -> str:
+        planner = Planner(self.client, self.model)
+        plan = planner.decompose(goal)
+        executor = PlanExecutor(self)
+        return executor.execute(plan)

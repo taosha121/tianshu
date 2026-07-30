@@ -1,0 +1,21 @@
+[project]
+name = "lingjiyidong"
+version = "0.1.0"
+description = "A code agent built from scratch, no frameworks"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic",
+    "httpx",
+    "python-dotenv",
+]
+
+[project.scripts]
+lj = "lingjiyidong.main:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["lingjiyidong"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
