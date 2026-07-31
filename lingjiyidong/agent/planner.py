@@ -108,7 +108,14 @@ class PlanExecutor:
             while step.attempts < _MAX_RETRIES:
                 step.attempts += 1
                 try:
-                    result = self.agent.chat(context)
+                    from lingjiyidong.agent import Agent
+                    # 复用父 Agent 的 system prompt，跳过重复的文件扫描和 git 调用
+                    step_agent = Agent(
+                        model=self.agent.model,
+                        cwd=self.agent.cwd,
+                        _system_prompt=self.agent._system_prompt,
+                    )
+                    result = step_agent.chat(context)
                     step.result = result
                     step.status = StepStatus.DONE
                     print(f"  完成: {result[:80]}{'...' if len(result) > 80 else ''}\n")

@@ -14,6 +14,31 @@ load_dotenv()
 _TOOL_SCHEMAS = [t.to_api_dict() for t in TOOLS]
 _MAX_ITERATIONS = 10
 
+_TOOL_MAX_CHARS: dict[str, int] = {
+    "read_file": 4_000,
+    "bash": 3_000,
+    "grep_files": 2_000,
+    "web_fetch": 5_000,
+    "write_file": 500,
+    "edit_file": 500,
+    "create_directory": 500,
+    "save_memory": 500,
+}
+_TOOL_MAX_CHARS_DEFAULT = 8_000
+
+
+def _truncate_result(tool_name: str, result: str) -> str:
+    limit = _TOOL_MAX_CHARS.get(tool_name, _TOOL_MAX_CHARS_DEFAULT)
+    if len(result) <= limit:
+        return result
+    head = int(limit * 0.6)
+    tail = limit - head
+    return (
+        result[:head]
+        + f"\n\n[已截断 {len(result) - limit} 字符，保留头部和尾部]\n\n"
+        + result[-tail:]
+    )
+
 
 def _build_system_prompt(cwd: str) -> str:
     lines = [
@@ -139,7 +164,14 @@ def _build_system_prompt(cwd: str) -> str:
 
 
 class Agent:
-    def __init__(self, model: str = "anthropic--claude-4.5-sonnet", cwd: str | None = None):
+    def __init__(
+        self,
+        model: str = "anthropic--claude-4.5-sonnet",
+        cwd: str | None = None,
+        # plan 模式下各步骤复用父 Agent 已构建好的 system prompt，避免每步重跑
+        # rglob + git status 扫描，对大项目开销明显
+        _system_prompt: str | None = None,
+    ):
         self.client = anthropic.Anthropic(
             base_url="http://localhost:6655/anthropic",
             api_key=os.environ["ANTHROPIC_API_KEY"],
@@ -149,7 +181,7 @@ class Agent:
         self.history = []
         self.context = ContextManager()
         self.longterm = LongTermMemory(self.cwd)
-        self._system_prompt = _build_system_prompt(self.cwd)
+        self._system_prompt = _system_prompt or _build_system_prompt(self.cwd)
 
     def chat(self, user_input: str) -> str:
         self.history.append({"role": "user", "content": user_input})
@@ -191,9 +223,7 @@ class Agent:
                     continue
                 tool = TOOL_MAP.get(block.name)
                 result = tool.func(**block.input) if tool else f"未知工具: {block.name}"
-                _MAX_RESULT = 20_000
-                if len(result) > _MAX_RESULT:
-                    result = result[:_MAX_RESULT] + f"\n\n[结果过长，已截断至 {_MAX_RESULT} 字符，使用 start_line/end_line 参数读取剩余部分]"
+                result = _truncate_result(block.name, result)
                 preview = result if len(result) <= 100 else result[:100] + "..."
                 print(f"  [工具调用] {block.name}({block.input}) → {preview}")
                 tool_results.append({
