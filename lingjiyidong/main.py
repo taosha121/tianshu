@@ -59,7 +59,7 @@ def _print_banner():
 
     # 机器人 + 文字
     print(content("╭────────╮",  f"{_CYAN}╭────────╮{_RESET}",
-                  "灵机一动  v0.1.0", f"{_BOLD}{_GREEN}灵机一动{_RESET}  {_DIM}v0.1.0{_RESET}"))
+                  "灵机一动  v0.2.0", f"{_BOLD}{_GREEN}灵机一动{_RESET}  {_DIM}v0.2.0{_RESET}"))
     print(content("│ ◉    ◉ │",  f"{_CYAN}│{_RESET} {_YELLOW}◉{_RESET}    {_YELLOW}◉{_RESET} {_CYAN}│{_RESET}",
                   "灵光乍现，代码自成", f"{_DIM}灵光乍现，代码自成{_RESET}"))
     print(content("│   ──   │",  f"{_CYAN}│{_RESET}   {_MAGENTA}──{_RESET}   {_CYAN}│{_RESET}",
