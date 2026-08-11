@@ -35,7 +35,7 @@ def _truncate_result(tool_name: str, result: str) -> str:
     tail = limit - head
     return (
         result[:head]
-        + f"\n\n[已截断 {len(result) - limit} 字符，保留头部和尾部]\n\n"
+        + f"\n\n[Truncated {len(result) - limit} characters, head and tail preserved]\n\n"
         + result[-tail:]
     )
 
@@ -162,8 +162,8 @@ class Agent:
         self,
         model: str = "anthropic--claude-4.5-sonnet",
         cwd: str | None = None,
-        # plan 模式下各步骤复用父 Agent 已构建好的 system prompt，避免每步重跑
-        # rglob + git status 扫描，对大项目开销明显
+        # plan-mode steps reuse the parent Agent's system prompt to avoid
+        # re-running the rglob + git status scan for every step
         _system_prompt: str | None = None,
     ):
         self.client = anthropic.Anthropic(
@@ -194,13 +194,6 @@ class Agent:
 
             self.history.append({"role": "assistant", "content": response.content})
 
-            # stop_reason 可能的值：
-            #   "end_turn"       → 模型正常结束，直接返回给用户（最常见）
-            #   "tool_use"       → 模型要调用工具，继续循环
-            #   "max_tokens"     → 达到 max_tokens 上限，输出被截断，此处未单独处理
-            #   "stop_sequence"  → 命中自定义停止串，此项目未设置 stop_sequences
-            #   "pause_turn"     → 服务端工具单轮迭代上限，需重新发起请求（较新模型）
-            #   "refusal"        → 安全拒绝，Opus 5 / Fable 5 等新模型才会出现
             if response.stop_reason != "tool_use":
                 return response.content[0].text
 
@@ -209,10 +202,10 @@ class Agent:
                 if block.type != "tool_use":
                     continue
                 tool = TOOL_MAP.get(block.name)
-                result = tool.func(**block.input) if tool else f"未知工具: {block.name}"
+                result = tool.func(**block.input) if tool else f"Unknown tool: {block.name}"
                 result = _truncate_result(block.name, result)
                 preview = result if len(result) <= 100 else result[:100] + "..."
-                print(f"  [工具调用] {block.name}({block.input}) → {preview}")
+                print(f"  [tool] {block.name}({block.input}) -> {preview}")
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": block.id,
@@ -221,13 +214,12 @@ class Agent:
 
             self.history.append({"role": "user", "content": tool_results})
 
-        return "已达到最大迭代次数，未能完成任务。"
+        return "Maximum iterations reached without completing the task."
 
     def execute(self, goal: str) -> str:
         planner = Planner(self.client, self.model)
         plan = planner.decompose(goal)
         if plan is None:
-            # 模型判断无需拆解，直接走普通 chat
             return self.chat(goal)
         return PlanExecutor(self).execute(plan)
 

@@ -28,17 +28,16 @@ class ContextManager:
     ):
         self.max_tokens = max_tokens
         self.compress_threshold = compress_threshold
-        self.min_window = min_window  # 压缩后至少保留最近 N 条消息
+        self.min_window = min_window  # minimum messages to keep after compression
         self._summary: str = ""
 
     @property
     def system_addendum(self) -> str:
         if self._summary:
-            return f"\n\n--- 早期对话摘要 ---\n{self._summary}\n--- 摘要结束 ---"
+            return f"\n\n--- Conversation summary ---\n{self._summary}\n--- End of summary ---"
         return ""
 
     def maybe_compress(self, history: list[dict], client: Any, model: str) -> list[dict]:
-        """检查 token 用量，超过阈值时压缩旧消息，返回新 history。"""
         estimated = _estimate_tokens(history)
         threshold = int(self.max_tokens * self.compress_threshold)
         if estimated < threshold:
@@ -66,9 +65,9 @@ class ContextManager:
                         if btype == "text":
                             parts.append(block["text"])
                         elif btype == "tool_use":
-                            parts.append(f"[工具调用: {block['name']}({block.get('input', {})})]")
+                            parts.append(f"[tool_call: {block['name']}({block.get('input', {})})]")
                         elif btype == "tool_result":
-                            parts.append(f"[工具结果: {block.get('content', '')}]")
+                            parts.append(f"[tool_result: {block.get('content', '')}]")
                     else:
                         parts.append(str(block))
                 text = " ".join(parts)
@@ -78,10 +77,11 @@ class ContextManager:
 
         conversation_text = "\n".join(serialized)
 
-        existing = f"已有摘要：\n{self._summary}\n\n" if self._summary else ""
+        existing = f"Existing summary:\n{self._summary}\n\n" if self._summary else ""
         prompt = (
             f"{existing}"
-            f"请将以下对话压缩为简洁的摘要，保留关键信息、决策和结论，去除冗余内容：\n\n"
+            f"Summarize the following conversation concisely, preserving key information, "
+            f"decisions, and conclusions while removing redundant content:\n\n"
             f"{conversation_text}"
         )
 

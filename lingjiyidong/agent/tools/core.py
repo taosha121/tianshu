@@ -34,18 +34,18 @@ def read_file(path: str, start_line: int = 0, end_line: int = 0) -> str:
             return prefix + "".join(lines)
         return "".join(lines)
     except FileNotFoundError:
-        return f"文件不存在: {path}"
+        return f"File not found: {path}"
     except Exception as e:
-        return f"读取失败: {e}"
+        return f"Read failed: {e}"
 
 
 def get_outline(path: str) -> str:
     try:
         lines = Path(path).read_text(encoding="utf-8").splitlines()
     except FileNotFoundError:
-        return f"文件不存在: {path}"
+        return f"File not found: {path}"
     except Exception as e:
-        return f"读取失败: {e}"
+        return f"Read failed: {e}"
 
     ext = Path(path).suffix.lower()
     result = []
@@ -59,12 +59,12 @@ def get_outline(path: str) -> str:
         import re
         _JS_SYMBOL = re.compile(
             r"^\s*(?:"
-            r"(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+\w+"  # function declarations
-            r"|(?:export\s+)?class\s+\w+"                                 # class declarations
-            r"|(?:export\s+)?const\s+\w+\s*=\s*(?:async\s+)?\("          # const arrow functions
-            r"|(?:export\s+)?const\s+\w+\s*=\s*function"                 # const function expressions
-            r"|[\w.]+\.extend\s*\("                                       # UI5: Controller.extend(
-            r"|sap\.ui\.define\s*\("                                      # UI5: sap.ui.define(
+            r"(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+\w+"
+            r"|(?:export\s+)?class\s+\w+"
+            r"|(?:export\s+)?const\s+\w+\s*=\s*(?:async\s+)?\("
+            r"|(?:export\s+)?const\s+\w+\s*=\s*function"
+            r"|[\w.]+\.extend\s*\("
+            r"|sap\.ui\.define\s*\("
             r")"
         )
         for i, line in enumerate(lines, 1):
@@ -92,11 +92,11 @@ def find_symbol(name: str, directory: str = ".") -> str:
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
             if r.stdout.strip():
                 out += r.stdout.strip() + "\n"
-        return out.strip() if out.strip() else f"未找到符号: {name}"
+        return out.strip() if out.strip() else f"Symbol not found: {name}"
     except subprocess.TimeoutExpired:
-        return "搜索超时"
+        return "Search timed out"
     except Exception as e:
-        return f"搜索失败: {e}"
+        return f"Search failed: {e}"
 
 
 def write_file(path: str, content: str) -> str:
@@ -104,33 +104,33 @@ def write_file(path: str, content: str) -> str:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             f.write(content)
-        return f"已写入: {path}"
+        return f"Written: {path}"
     except Exception as e:
-        return f"写入失败: {e}"
+        return f"Write failed: {e}"
 
 
 def edit_file(path: str, old_string: str, new_string: str) -> str:
     try:
         text = Path(path).read_text(encoding="utf-8")
         if old_string not in text:
-            return f"未找到目标内容，无法替换"
+            return "Target string not found, cannot replace"
         count = text.count(old_string)
         if count > 1:
-            return f"目标内容出现 {count} 次，请提供更多上下文使其唯一"
+            return f"Target string appears {count} times, provide more context to make it unique"
         Path(path).write_text(text.replace(old_string, new_string, 1), encoding="utf-8")
-        return f"已替换: {path}"
+        return f"Edited: {path}"
     except FileNotFoundError:
-        return f"文件不存在: {path}"
+        return f"File not found: {path}"
     except Exception as e:
-        return f"编辑失败: {e}"
+        return f"Edit failed: {e}"
 
 
 def create_directory(path: str) -> str:
     try:
         Path(path).mkdir(parents=True, exist_ok=True)
-        return f"已创建目录: {path}"
+        return f"Directory created: {path}"
     except Exception as e:
-        return f"创建失败: {e}"
+        return f"Create failed: {e}"
 
 
 def list_files(directory: str = ".", pattern: str = "**/*") -> str:
@@ -142,10 +142,10 @@ def list_files(directory: str = ".", pattern: str = "**/*") -> str:
             if p.is_file() and not any(part.startswith(".") for part in p.parts)
         ]
         if not matches:
-            return "没有找到匹配的文件"
+            return "No matching files found"
         return "\n".join(sorted(matches))
     except Exception as e:
-        return f"列举文件失败: {e}"
+        return f"List files failed: {e}"
 
 
 def grep_files(pattern: str, directory: str = ".", file_glob: str = "") -> str:
@@ -153,11 +153,11 @@ def grep_files(pattern: str, directory: str = ".", file_glob: str = "") -> str:
         cmd = ["grep", "-rn", "--include", file_glob or "*", pattern, directory]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
         output = result.stdout.strip()
-        return output if output else "没有找到匹配内容"
+        return output if output else "No matches found"
     except subprocess.TimeoutExpired:
-        return "搜索超时"
+        return "Search timed out"
     except Exception as e:
-        return f"搜索失败: {e}"
+        return f"Search failed: {e}"
 
 
 def bash(command: str, timeout: int = 30) -> str:
@@ -174,15 +174,15 @@ def bash(command: str, timeout: int = 30) -> str:
             output += f"\n[stderr]\n{result.stderr}"
         return output.strip() or "(no output)"
     except subprocess.TimeoutExpired:
-        return f"命令超时（{timeout}s）"
+        return f"Command timed out ({timeout}s)"
     except Exception as e:
-        return f"执行失败: {e}"
+        return f"Execution failed: {e}"
 
 
 def web_search(query: str) -> str:
     api_key = os.environ.get("TAVILY_API_KEY", "")
     if not api_key:
-        return "未配置 TAVILY_API_KEY"
+        return "TAVILY_API_KEY not configured"
     try:
         resp = httpx.post(
             "https://api.tavily.com/search",
@@ -196,7 +196,7 @@ def web_search(query: str) -> str:
             f"[{r['title']}]({r['url']})\n{r.get('content', '')}" for r in results
         )
     except Exception as e:
-        return f"搜索失败: {e}"
+        return f"Search failed: {e}"
 
 
 def web_fetch(url: str) -> str:
@@ -205,26 +205,26 @@ def web_fetch(url: str) -> str:
         resp.raise_for_status()
         return resp.text
     except Exception as e:
-        return f"抓取失败: {e}"
+        return f"Fetch failed: {e}"
 
 
 def save_memory(note: str, workspace: str = ".") -> str:
     from lingjiyidong.agent.memory.longterm import LongTermMemory
     mem = LongTermMemory(workspace)
     mem.append(note)
-    return f"已保存到记忆: {note}"
+    return f"Saved to memory: {note}"
 
 
 TOOLS: list[Tool] = [
     Tool(
         name="read_file",
-        description="读取本地文件内容。支持 start_line/end_line 只读指定行范围，避免读取大文件全部内容。",
+        description="Read the contents of a local file. Use start_line/end_line to read only a range and avoid loading large files entirely.",
         input_schema={
             "type": "object",
             "properties": {
-                "path": {"type": "string", "description": "文件的绝对路径或相对路径"},
-                "start_line": {"type": "integer", "description": "起始行号（从 1 开始），不填则从头读"},
-                "end_line": {"type": "integer", "description": "结束行号（含），不填则读到文件末尾"},
+                "path": {"type": "string", "description": "Absolute or relative path to the file"},
+                "start_line": {"type": "integer", "description": "First line to read (1-indexed); omit to read from the beginning"},
+                "end_line": {"type": "integer", "description": "Last line to read (inclusive); omit to read to end of file"},
             },
             "required": ["path"],
         },
@@ -232,12 +232,12 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="write_file",
-        description="创建或覆盖写入一个文件。父目录不存在时自动创建。",
+        description="Create or overwrite a file. Parent directories are created automatically.",
         input_schema={
             "type": "object",
             "properties": {
-                "path": {"type": "string", "description": "文件路径"},
-                "content": {"type": "string", "description": "写入的完整内容"},
+                "path": {"type": "string", "description": "File path"},
+                "content": {"type": "string", "description": "Full content to write"},
             },
             "required": ["path", "content"],
         },
@@ -245,13 +245,13 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="edit_file",
-        description="精准替换文件中的一段内容。old_string 必须在文件中唯一存在。",
+        description="Replace a unique string in a file. old_string must appear exactly once.",
         input_schema={
             "type": "object",
             "properties": {
-                "path": {"type": "string", "description": "文件路径"},
-                "old_string": {"type": "string", "description": "要被替换的原始内容，必须完整匹配"},
-                "new_string": {"type": "string", "description": "替换后的新内容"},
+                "path": {"type": "string", "description": "File path"},
+                "old_string": {"type": "string", "description": "Exact string to replace; must be unique in the file"},
+                "new_string": {"type": "string", "description": "Replacement string"},
             },
             "required": ["path", "old_string", "new_string"],
         },
@@ -259,11 +259,11 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="create_directory",
-        description="创建目录，支持递归创建多级目录。",
+        description="Create a directory, including any missing parent directories.",
         input_schema={
             "type": "object",
             "properties": {
-                "path": {"type": "string", "description": "要创建的目录路径"},
+                "path": {"type": "string", "description": "Directory path to create"},
             },
             "required": ["path"],
         },
@@ -271,12 +271,12 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="list_files",
-        description="列举目录下的文件，支持 glob 模式过滤。",
+        description="List files in a directory, optionally filtered by a glob pattern.",
         input_schema={
             "type": "object",
             "properties": {
-                "directory": {"type": "string", "description": "要列举的目录路径，默认为当前目录"},
-                "pattern": {"type": "string", "description": "glob 模式，例如 '**/*.py'，默认列举所有文件"},
+                "directory": {"type": "string", "description": "Directory to list; defaults to current directory"},
+                "pattern": {"type": "string", "description": "Glob pattern, e.g. '**/*.py'; defaults to all files"},
             },
             "required": [],
         },
@@ -284,13 +284,13 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="grep_files",
-        description="在目录中搜索匹配指定模式的文本，返回文件名和行号。",
+        description="Search for a pattern across files in a directory; returns matching file names and line numbers.",
         input_schema={
             "type": "object",
             "properties": {
-                "pattern": {"type": "string", "description": "要搜索的文本或正则表达式"},
-                "directory": {"type": "string", "description": "搜索的目录，默认为当前目录"},
-                "file_glob": {"type": "string", "description": "限定搜索的文件类型，例如 '*.py'"},
+                "pattern": {"type": "string", "description": "Text or regex to search for"},
+                "directory": {"type": "string", "description": "Directory to search; defaults to current directory"},
+                "file_glob": {"type": "string", "description": "Restrict search to files matching this glob, e.g. '*.py'"},
             },
             "required": ["pattern"],
         },
@@ -298,12 +298,12 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="bash",
-        description="在 shell 中执行命令，返回 stdout 和 stderr。可用于运行测试、git 操作、安装依赖等。",
+        description="Execute a shell command and return stdout and stderr. Useful for running tests, git operations, installing dependencies, etc.",
         input_schema={
             "type": "object",
             "properties": {
-                "command": {"type": "string", "description": "要执行的 shell 命令"},
-                "timeout": {"type": "integer", "description": "超时秒数，默认 30"},
+                "command": {"type": "string", "description": "Shell command to execute"},
+                "timeout": {"type": "integer", "description": "Timeout in seconds; defaults to 30"},
             },
             "required": ["command"],
         },
@@ -311,11 +311,11 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="web_search",
-        description="在网络上搜索信息，返回搜索结果摘要。",
+        description="Search the web and return result summaries.",
         input_schema={
             "type": "object",
             "properties": {
-                "query": {"type": "string", "description": "搜索关键词或问题"},
+                "query": {"type": "string", "description": "Search query or question"},
             },
             "required": ["query"],
         },
@@ -323,11 +323,11 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="web_fetch",
-        description="抓取指定 URL 的网页内容，用于阅读文档或 issue。",
+        description="Fetch the content of a URL; useful for reading documentation or issues.",
         input_schema={
             "type": "object",
             "properties": {
-                "url": {"type": "string", "description": "要抓取的 URL"},
+                "url": {"type": "string", "description": "URL to fetch"},
             },
             "required": ["url"],
         },
@@ -335,12 +335,12 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="save_memory",
-        description="将重要信息保存到长期记忆，下次启动时自动加载。",
+        description="Save important information to long-term memory; it will be loaded automatically on next startup.",
         input_schema={
             "type": "object",
             "properties": {
-                "note": {"type": "string", "description": "要记住的信息"},
-                "workspace": {"type": "string", "description": "工作目录路径，默认为当前目录"},
+                "note": {"type": "string", "description": "Information to remember"},
+                "workspace": {"type": "string", "description": "Workspace directory path; defaults to current directory"},
             },
             "required": ["note"],
         },
@@ -348,11 +348,11 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="get_outline",
-        description="返回 Python 文件中所有 def/class 的签名和行号，不含函数体。用于快速了解文件结构，比 read_file 省 token。",
+        description="Return all def/class signatures and line numbers in a Python file without the function bodies. Faster than read_file for understanding file structure.",
         input_schema={
             "type": "object",
             "properties": {
-                "path": {"type": "string", "description": "Python 文件路径"},
+                "path": {"type": "string", "description": "Path to the Python file"},
             },
             "required": ["path"],
         },
@@ -360,12 +360,12 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="find_symbol",
-        description="在 repo 中查找某个函数或类的定义位置，返回文件名和行号。相当于'跳转到定义'。",
+        description="Find where a function or class is defined in the repo; returns file name and line number. Equivalent to 'go to definition'.",
         input_schema={
             "type": "object",
             "properties": {
-                "name": {"type": "string", "description": "函数名或类名"},
-                "directory": {"type": "string", "description": "搜索的根目录，默认为当前目录"},
+                "name": {"type": "string", "description": "Function or class name"},
+                "directory": {"type": "string", "description": "Root directory to search; defaults to current directory"},
             },
             "required": ["name"],
         },

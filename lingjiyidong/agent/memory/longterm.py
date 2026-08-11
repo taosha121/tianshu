@@ -28,4 +28,4 @@ class LongTermMemory:
         content = self.load()
         if not content:
             return ""
-        return f"\n\n--- 长期记忆 ---\n{content}\n--- 记忆结束 ---"
+        return f"\n\n--- Long-term memory ---\n{content}\n--- End of memory ---"

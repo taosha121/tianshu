@@ -14,16 +14,16 @@ class Skill:
 _BUILTIN_DIR = Path(__file__).parent / "builtin"
 
 _MATCH_PROMPT = """\
-你是一个 skill 路由器。判断用户的目标是否与以下某个预定义 skill 高度匹配。
+You are a skill router. Determine whether the user's goal closely matches one of the predefined skills below.
 
-用户目标：{goal}
+User goal: {goal}
 
-可用 skills：
+Available skills:
 {skill_list}
 
-如果用户目标与某个 skill 高度匹配（80% 以上的语义相似），返回该 skill 的 name。
-如果没有匹配，返回 null。
-只返回 JSON，格式：{{"match": "skill_name"}} 或 {{"match": null}}
+If the user's goal closely matches a skill (80%+ semantic similarity), return that skill's name.
+If there is no match, return null.
+Return JSON only, format: {{"match": "skill_name"}} or {{"match": null}}
 """
 
 
