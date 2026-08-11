@@ -6,7 +6,7 @@ import anthropic
 from dotenv import load_dotenv
 
 from lingjiyidong.agent.memory import ContextManager, LongTermMemory
-from lingjiyidong.agent.planner import Planner, PlanExecutor
+from lingjiyidong.agent.planner import Planner, PlanExecutor, Plan, Step
 from lingjiyidong.agent.tools import TOOLS, TOOL_MAP
 
 load_dotenv()
@@ -226,5 +226,12 @@ class Agent:
     def execute(self, goal: str) -> str:
         planner = Planner(self.client, self.model)
         plan = planner.decompose(goal)
-        executor = PlanExecutor(self)
-        return executor.execute(plan)
+        if plan is None:
+            # 模型判断无需拆解，直接走普通 chat
+            return self.chat(goal)
+        return PlanExecutor(self).execute(plan)
+
+    def execute_skill(self, skill) -> str:
+        steps = [Step(index=i, description=d) for i, d in enumerate(skill.steps)]
+        plan = Plan(goal=skill.description, steps=steps)
+        return PlanExecutor(self).execute(plan)

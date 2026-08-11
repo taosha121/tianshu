@@ -160,15 +160,16 @@ Planner.decompose()                     ← 单次 LLM 调用，无工具
 
 ---
 
-### 第四阶段：路由与 Skills（规划中）
+### 第四阶段：自动 Plan 触发与 Skills
 
-**目标：** 为 Agent 引入角色路由机制和可复用的 Skill 系统。
+**目标：** 去掉需要用户手动输入 `/plan` 的设计缺陷，引入可复用的 Skill 系统。
 
-**为什么需要路由：** 当前所有任务都交给同一个通用 Agent 处理。但不同类型的任务适合不同的"专家"——代码审查需要严格的 reviewer 视角，文档写作需要清晰的 writer 视角，调试需要系统性的 debugger 思路。路由层根据任务类型将请求分发给对应角色的 Agent，每个角色有独立的 system prompt 和工具集，减少干扰，提升专注度。
+**为什么去掉手动 `/plan`：** `/plan` 是内部实现细节，不应暴露给用户。复杂度判断是模型的职责，而不是用户的。改为让 `Planner` 在 prompt 里加入 `needs_plan` 字段，由模型自己决定是否需要拆解——返回 `null` 则直接走普通 `chat()`，返回 `Plan` 则走 `PlanExecutor`，用户无感知。
 
-**为什么需要 Skills：** 某些高频操作（如"运行测试并修复失败"、"检查代码风格"）每次都要从头规划，浪费 token 也容易出错。Skills 是预定义的步骤模板，类似宏，可以被路由层直接调用，跳过规划阶段。
+**为什么需要 Skills：** 某些高频操作（如"运行测试并修复失败"、"检查代码风格"）每次都要从头规划，浪费 token 也容易出错。Skills 是预定义的步骤序列，存储为 YAML，既可以在用户输入与 skill 描述语义匹配时自动命中，也可以通过 `/skill-name` 手动精确触发。
 
-**规划实现：**
-- `Router`：分析用户意图，选择合适的 Agent 角色（`coder` / `reviewer` / `writer` / `debugger`）
-- `Skill`：预定义的步骤序列，存储为 YAML，可被 Planner 直接引用
-- `AgentRole`：角色配置，包含专属 system prompt 片段和工具白名单
+**核心组件：**
+- `Skill`：纯数据类，含 `name`、`description`、`steps`
+- `SkillLoader`：加载 `builtin/*.yaml`，提供 `find()`（精确匹配）和 `match()`（单次 LLM 语义匹配）
+- `Planner.decompose()`：入口处先做 skill 语义匹配，命中则直接返回预定义步骤；未命中则 LLM 规划，模型判断 `needs_plan=false` 时返回 `None`
+- `Agent.execute_skill()`：封装 Skill → Plan → PlanExecutor 的转换，`main.py` 无需感知内部结构

@@ -1,6 +1,6 @@
 [project]
 name = "lingjiyidong"
-version = "0.2.0"
+version = "0.3.0"
 description = "A code agent built from scratch, no frameworks"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -8,6 +8,7 @@ dependencies = [
     "anthropic",
     "httpx",
     "python-dotenv",
+    "PyYAML",
 ]
 
 [project.scripts]

@@ -1,6 +1,7 @@
 import os
 
 from lingjiyidong.agent import Agent
+from lingjiyidong.agent.skills import SkillLoader
 
 _RESET = "\033[0m"
 _BOLD = "\033[1m"
@@ -59,7 +60,7 @@ def _print_banner():
 
     # 机器人 + 文字
     print(content("╭────────╮",  f"{_CYAN}╭────────╮{_RESET}",
-                  "灵机一动  v0.2.0", f"{_BOLD}{_GREEN}灵机一动{_RESET}  {_DIM}v0.2.0{_RESET}"))
+                  "灵机一动  v0.3.0", f"{_BOLD}{_GREEN}灵机一动{_RESET}  {_DIM}v0.3.0{_RESET}"))
     print(content("│ ◉    ◉ │",  f"{_CYAN}│{_RESET} {_YELLOW}◉{_RESET}    {_YELLOW}◉{_RESET} {_CYAN}│{_RESET}",
                   "灵光乍现，代码自成", f"{_DIM}灵光乍现，代码自成{_RESET}"))
     print(content("│   ──   │",  f"{_CYAN}│{_RESET}   {_MAGENTA}──{_RESET}   {_CYAN}│{_RESET}",
@@ -68,8 +69,8 @@ def _print_banner():
     print(content("    │",       f"    {_CYAN}│{_RESET}"))
 
     print(inner(" " * IW))
-    print(cmd("/plan <goal>   启用任务规划模式",
-              f"{_YELLOW}/plan <goal>{_RESET}   启用任务规划模式"))
+    print(cmd("/<skill>       直接执行预定义 skill",
+              f"{_YELLOW}/<skill>{_RESET}       直接执行预定义 skill"))
     print(cmd("exit           退出",
               f"{_YELLOW}exit{_RESET}           退出"))
     print(inner(" " * IW))
@@ -86,6 +87,7 @@ def _print_banner():
 
 def main():
     agent = Agent(cwd=os.getcwd())
+    loader = SkillLoader()
     _print_banner()
     print(f"  {_DIM}工作目录: {os.getcwd()}{_RESET}")
     print()
@@ -95,13 +97,21 @@ def main():
             continue
         if user_input.lower() in ("exit", "quit"):
             break
-        if user_input.startswith("/plan "):
-            goal = user_input[6:].strip()
-            result = agent.execute(goal)
-            print(f"\nAgent: {result}")
+
+        if user_input.startswith("/"):
+            # skill 手动触发，跳过路由直接执行预定义步骤
+            skill_name = user_input[1:].strip()
+            skill = loader.find(skill_name)
+            if skill:
+                result = agent.execute_skill(skill)
+                print(f"\nAgent: {result}")
+            else:
+                available = ", ".join(f"/{s.name}" for s in loader.all())
+                print(f"  未知命令: /{skill_name}" + (f"  可用: {available}" if available else ""))
         else:
-            response = agent.chat(user_input)
-            print(f"Agent: {response}")
+            # 普通输入，模型自己判断是否需要 plan
+            result = agent.execute(user_input)
+            print(f"\nAgent: {result}")
 
 
 if __name__ == "__main__":

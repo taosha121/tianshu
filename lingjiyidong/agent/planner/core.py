@@ -52,14 +52,21 @@ class Plan:
 
 
 _PLAN_PROMPT = """\
-你是一个任务规划器。将下面的目标拆解为一个有序的步骤列表，每个步骤应该是一个独立、可执行的具体操作。
+你是一个任务规划器。判断下面的目标是否需要拆解为多个步骤执行，然后给出结果。
 
-要求：
+判断标准：
+- 需要拆解（needs_plan=true）：任务涉及多个独立操作、需要顺序执行多步、或预计需要超过 5 次工具调用
+- 无需拆解（needs_plan=false）：简单问答、单文件操作、查询类任务
+
+如果需要拆解，步骤要求：
 - 步骤数量控制在 3-8 步
 - 每步描述简洁明确，一句话说清楚要做什么
 - 如果某步骤必须在其他步骤完成后才能执行，在 depends_on 里填入那些步骤的序号（从 0 开始），否则填空列表
 - 没有依赖关系的步骤可以并行执行，尽量减少不必要的依赖
-- 返回 JSON 格式：{{"steps": [{{"desc": "步骤描述", "depends_on": []}}, ...]}}
+
+返回 JSON 格式：
+- 不需要拆解：{{"needs_plan": false, "steps": []}}
+- 需要拆解：{{"needs_plan": true, "steps": [{{"desc": "步骤描述", "depends_on": []}}, ...]}}
 
 目标：{goal}
 """
@@ -70,7 +77,15 @@ class Planner:
         self.client = client
         self.model = model
 
-    def decompose(self, goal: str) -> Plan:
+    def decompose(self, goal: str) -> "Plan | None":
+        # 先尝试 skill 语义匹配，命中则直接返回预定义 Plan，跳过 LLM 规划
+        from lingjiyidong.agent.skills import SkillLoader
+        skill = SkillLoader().match(goal, self.client, self.model)
+        if skill:
+            print(f"  [Skill] 匹配到 skill: {skill.name}")
+            steps = [Step(index=i, description=d) for i, d in enumerate(skill.steps)]
+            return Plan(goal=goal, steps=steps)
+
         response = self.client.messages.create(
             model=self.model,
             max_tokens=1024,
@@ -82,14 +97,19 @@ class Planner:
             start = text.find("{")
             end = text.rfind("}") + 1
             data = json.loads(text[start:end])
+
+            if not data.get("needs_plan", True):
+                return None
+
             # depends_on 是可选字段，模型可能不输出，get 避免 KeyError
             steps = [
                 Step(index=i, description=s["desc"], depends_on=s.get("depends_on", []))
                 for i, s in enumerate(data["steps"])
             ]
+            if not steps:
+                return None
         except Exception:
-            # JSON 解析失败时退化为单步执行，保证不崩溃
-            steps = [Step(index=0, description=goal)]
+            return None
         return Plan(goal=goal, steps=steps)
 
 
