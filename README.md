@@ -25,7 +25,7 @@ lj
 ## 功能
 
 - **对话模式**：直接与 Agent 对话，支持多轮上下文
-- **任务规划模式**：输入 `/plan <目标>`，Agent 自动拆解任务并逐步执行
+- **任务规划模式**：输入 `/plan <目标>`，Agent 自动拆解任务、并行执行、动态重规划
 - **工具调用**：读写文件、执行命令、搜索代码、抓取网页等
 - **长期记忆**：自动保存重要信息，下次启动时加载
 - **上下文压缩**：长对话自动压缩，不会撑爆 context window
@@ -34,15 +34,20 @@ lj
 
 ```
 lingjiyidong/
-├── main.py                  # CLI 入口，banner 渲染，输入循环
+├── main.py                    # CLI 入口，banner 渲染，输入循环
 └── agent/
-    ├── __init__.py          # Agent 主类，chat / execute 循环
-    ├── planner.py           # Planner（目标拆解）+ PlanExecutor（逐步执行）
+    ├── __init__.py            # re-export Agent
+    ├── core.py                # Agent 主类，chat / execute，system prompt 构建
+    ├── planner/
+    │   ├── __init__.py        # re-export Planner, PlanExecutor, Replanner
+    │   └── core.py            # 目标拆解、并行执行、动态重规划
     ├── tools/
-    │   └── __init__.py      # 所有内置工具定义（12 个工具）
+    │   ├── __init__.py        # re-export TOOLS, TOOL_MAP, Tool
+    │   └── core.py            # 所有内置工具定义（12 个工具）
     └── memory/
-        ├── context.py       # ContextManager：对话压缩，防止 context 溢出
-        └── longterm.py      # LongTermMemory：持久化记忆，存储于 .agent/memory.md
+        ├── __init__.py        # re-export ContextManager, LongTermMemory
+        ├── context.py         # ContextManager：对话压缩，防止 context 溢出
+        └── longterm.py        # LongTermMemory：持久化记忆，存储于 .agent/memory.md
 ```
 
 ### 普通对话模式
@@ -82,91 +87,88 @@ Agent.chat()
                  └── 工具结果按类型截断后追加到 history，进入下一次迭代
 ```
 
-### 普通模式完整示例
-
-**用户输入：** `帮我看看 _print_banner 函数在哪里定义的`
-
-Agent 在发出第一次 API 请求前，完整的 prompt 如下：
-
-```
-─── system ────────────────────────────────────────────────
-
-You are an expert coding agent. You help users read, write, edit, and reason about code.
-You have access to tools for reading/writing files, running shell commands, searching code,
-and fetching web content.
-Always prefer targeted edits over rewriting entire files.
-To explore code: use get_outline(path) to see a file's symbols, and find_symbol(name) to
-locate definitions.
-
-Working directory: /Users/you/projects/lingjiyidong
-Project type: Python (pyproject.toml detected)
-Top-level structure: README.md, dist, lingjiyidong, pyproject.toml, requirements.txt
-
-Repo outline:
-lingjiyidong/main.py:
-   13: def _cjk_len(s)
-   17: def _print_banner()
-   82: def main()
-lingjiyidong/agent/__init__.py:
-   18: def _build_system_prompt(cwd)
-  141: class Agent
-  154: def chat(self, user_input)
-  ...
-
-Git branch: main
-
-─── messages ──────────────────────────────────────────────
-
-user: 帮我看看 _print_banner 函数在哪里定义的
-
-─── tools ─────────────────────────────────────────────────
-
-read_file, write_file, edit_file, create_directory,
-list_files, grep_files, bash, web_search, web_fetch,
-save_memory, get_outline, find_symbol
-```
-
-Claude 发现 repo outline 里已经直接列出了 `_print_banner` 在 `main.py:17`，**无需调用工具**，直接回复：
-
-```
-`_print_banner` 定义在 lingjiyidong/main.py 第 17 行。
-```
-
-**如果 outline 里没有**，Claude 会调用 `find_symbol`：
-
-```
-tool_use → find_symbol(name="_print_banner", directory=".")
-
-tool_result → "lingjiyidong/main.py:17:def _print_banner():"
-
-end_turn → "_print_banner 定义在 lingjiyidong/main.py 第 17 行。"
-```
+### Plan 模式（`/plan <目标>`）
 
 ```
 /plan <goal>
   │
   ▼
 Planner.decompose()                     ← 单次 LLM 调用，无工具
-  │  prompt: "将目标拆解为 3-8 个步骤，返回 JSON"
+  │  返回 JSON：steps[{desc, depends_on[]}]
   │
   └─→ Plan { steps: [步骤1, 步骤2, ...] }
           │
           ▼
     PlanExecutor.execute()
           │
-          ├── 打印任务概览
+          ├── 创建共享工作空间 .agent/workspace/<uuid>/
           │
-          ├─ Step 1
-          │    ├── 新建独立 Agent（复用父 Agent 的 system prompt，跳过重复扫描）
-          │    ├── 构建 prompt：总目标 + 当前步骤描述
+          ├─ 调度循环（ThreadPoolExecutor，max_workers=4）
+          │    └── 按 depends_on DAG 找出"所有依赖已完成"的步骤，并发提交
+          │
+          ├─ 每个步骤（独立 Agent）
+          │    ├── 新建独立 Agent（复用父 Agent 的 system prompt）
+          │    ├── 构建 prompt：总目标 + 当前步骤描述 + 已完成步骤的输出文件路径
           │    └── 调用 Agent.chat() → 完整 Tool-Use 循环 → 记录结果
           │
-          ├─ Step 2
-          │    ├── 新建独立 Agent（history 不跨步骤累积）
-          │    ├── 构建 prompt：总目标 + 当前步骤描述 + 上一步结果（前 200 字符）
-          │    └── 调用 Agent.chat() → 完整 Tool-Use 循环 → 记录结果
-          │
-          ├─ Step N ...
+          ├─ 步骤失败时 → Replanner.replan()
+          │    └── LLM 决策：skip（跳过）/ retry（重试）/ replace（替换描述后重试）
           │
           └── 汇总：全部完成 → 输出摘要 / 部分失败 → 列出失败步骤
 ```
+
+---
+
+## Agent 迭代计划
+
+### 第一阶段：基础 Agent（已完成）
+
+**实现内容：** 自定义工具系统、ReAct 范式、Memory 管理。
+
+**为什么这样设计：** 一个有用的 Agent 需要三个基本能力——访问外部世界（工具）、多步推理（ReAct 循环）、跨轮次记忆（短期压缩 + 长期持久化）。这三者缺一不可：没有工具 Agent 只能空谈，没有循环 Agent 无法拆解复杂任务，没有记忆每次对话都从零开始。
+
+**核心组件：**
+- `tools/core.py`：12 个内置工具（文件读写、代码导航、bash、网络、记忆）
+- `agent/core.py`：ReAct 循环，最多 10 次迭代，工具结果按类型截断防止 context 溢出
+- `memory/context.py`：短期记忆，对话超过 60k token 时自动压缩为摘要
+- `memory/longterm.py`：长期记忆，持久化到 `.agent/memory.md`，每次启动时注入 system prompt
+
+---
+
+### 第二阶段：Plan 模式（已完成）
+
+**实现内容：** Planner（目标拆解）+ PlanExecutor（按步骤独立执行）。
+
+**为什么需要 Plan 模式：** ReAct 循环有两个硬限制。第一，`_MAX_ITERATIONS = 10`——复杂任务需要的工具调用次数远超 10 步。第二，history 会无限累积——多步任务会让 context 越来越长，超出限制或导致模型"遗忘"前面的工作。Plan 模式的解法是"分而治之"：先用一次 LLM 调用把目标拆解成 3–8 个步骤，然后每个步骤都启动一个独立的 Agent，拥有独立的 history，互不干扰，互不污染。
+
+**核心组件：**
+- `Planner.decompose()`：单次调用，输出步骤列表
+- `PlanExecutor.execute()`：为每个步骤实例化独立 Agent，串行执行，步骤结果（前 200 字符）作为下一步 context
+
+---
+
+### 第三阶段：多 Agent 编排（已完成）
+
+**实现内容：** 并行执行（DAG 依赖）、共享工作空间、动态重规划。
+
+**为什么需要多 Agent 编排：** 第二阶段的步骤是严格串行的——即使步骤之间没有依赖关系，也只能一个接一个等待。真实任务（如"分析 5 个文件并汇总"）中，独立的子任务完全可以并发执行。此外，串行传递的 200 字符摘要远不足以在步骤间共享大量数据（如生成的代码、分析报告）。最后，某个步骤失败时直接放弃整个计划代价过高，需要模型介入决策如何恢复。
+
+**新增能力：**
+- **并行执行**：`Step.depends_on` 定义 DAG，`ThreadPoolExecutor` 并发执行所有"依赖已满足"的步骤
+- **共享工作空间**：每次 `/plan` 创建 `.agent/workspace/<uuid>/`，步骤写文件到此，后续步骤通过文件路径读取，突破 200 字符限制
+- **动态重规划**：步骤失败时调用 `Replanner`，由 LLM 决策 `skip`（跳过）/ `retry`（重试）/ `replace`（修改描述后重试），最多重规划 3 次
+
+---
+
+### 第四阶段：路由与 Skills（规划中）
+
+**目标：** 为 Agent 引入角色路由机制和可复用的 Skill 系统。
+
+**为什么需要路由：** 当前所有任务都交给同一个通用 Agent 处理。但不同类型的任务适合不同的"专家"——代码审查需要严格的 reviewer 视角，文档写作需要清晰的 writer 视角，调试需要系统性的 debugger 思路。路由层根据任务类型将请求分发给对应角色的 Agent，每个角色有独立的 system prompt 和工具集，减少干扰，提升专注度。
+
+**为什么需要 Skills：** 某些高频操作（如"运行测试并修复失败"、"检查代码风格"）每次都要从头规划，浪费 token 也容易出错。Skills 是预定义的步骤模板，类似宏，可以被路由层直接调用，跳过规划阶段。
+
+**规划实现：**
+- `Router`：分析用户意图，选择合适的 Agent 角色（`coder` / `reviewer` / `writer` / `debugger`）
+- `Skill`：预定义的步骤序列，存储为 YAML，可被 Planner 直接引用
+- `AgentRole`：角色配置，包含专属 system prompt 片段和工具白名单
