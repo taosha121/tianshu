@@ -10,10 +10,11 @@ pip install lingjiyidong
 
 ## 使用
 
-需要先设置 Anthropic API Key：
+在项目根目录创建 `.env` 文件：
 
 ```bash
-export ANTHROPIC_API_KEY=your_key
+ANTHROPIC_API_KEY=your_key
+ANTHROPIC_BASE_URL=https://api.anthropic.com  # 可选，默认直连官方 API
 ```
 
 然后直接启动：
@@ -25,7 +26,8 @@ lj
 ## 功能
 
 - **对话模式**：直接与 Agent 对话，支持多轮上下文
-- **任务规划模式**：输入 `/plan <目标>`，Agent 自动拆解任务、并行执行、动态重规划
+- **自动 Plan**：复杂任务由模型自动判断是否拆解，无需手动触发
+- **Skills**：预定义高频操作，语义自动匹配或 `/skill-name` 手动触发
 - **工具调用**：读写文件、执行命令、搜索代码、抓取网页等
 - **长期记忆**：自动保存重要信息，下次启动时加载
 - **上下文压缩**：长对话自动压缩，不会撑爆 context window
@@ -37,13 +39,17 @@ lingjiyidong/
 ├── main.py                    # CLI 入口，banner 渲染，输入循环
 └── agent/
     ├── __init__.py            # re-export Agent
-    ├── core.py                # Agent 主类，chat / execute，system prompt 构建
+    ├── core.py                # Agent 主类，chat / execute / execute_skill，system prompt 构建
     ├── planner/
     │   ├── __init__.py        # re-export Planner, PlanExecutor, Replanner
     │   └── core.py            # 目标拆解、并行执行、动态重规划
     ├── tools/
     │   ├── __init__.py        # re-export TOOLS, TOOL_MAP, Tool
     │   └── core.py            # 所有内置工具定义（12 个工具）
+    ├── skills/
+    │   ├── __init__.py        # re-export Skill, SkillLoader
+    │   ├── core.py            # Skill dataclass + SkillLoader（加载 / 匹配 / 查找）
+    │   └── builtin/           # 内置 skill YAML（run_and_fix_tests, code_review）
     └── memory/
         ├── __init__.py        # re-export ContextManager, LongTermMemory
         ├── context.py         # ContextManager：对话压缩，防止 context 溢出
@@ -87,18 +93,22 @@ Agent.chat()
                  └── 工具结果按类型截断后追加到 history，进入下一次迭代
 ```
 
-### Plan 模式（`/plan <目标>`）
+### Plan 模式（自动触发 / `/skill-name` 手动触发）
 
 ```
-/plan <goal>
+用户输入
   │
-  ▼
-Planner.decompose()                     ← 单次 LLM 调用，无工具
-  │  返回 JSON：steps[{desc, depends_on[]}]
+  ├─ 以 / 开头 → SkillLoader.find() → 精确匹配 skill → Agent.execute_skill()
   │
-  └─→ Plan { steps: [步骤1, 步骤2, ...] }
-          │
-          ▼
+  └─ 普通输入 → Agent.execute()
+       │
+       ├─ SkillLoader.match()（语义匹配）→ 命中 → 直接构建预定义步骤
+       │
+       └─ Planner.decompose()（LLM 判断）
+            ├─ needs_plan=false → Agent.chat()（普通对话）
+            └─ needs_plan=true  → Plan { steps: [...] }
+                    │
+                    ▼
     PlanExecutor.execute()
           │
           ├── 创建共享工作空间 .agent/workspace/<uuid>/

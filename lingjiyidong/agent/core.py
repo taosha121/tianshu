@@ -167,7 +167,7 @@ class Agent:
         _system_prompt: str | None = None,
     ):
         self.client = anthropic.Anthropic(
-            base_url="http://localhost:6655/anthropic",
+            base_url=os.environ.get("ANTHROPIC_BASE_URL"),
             api_key=os.environ["ANTHROPIC_API_KEY"],
         )
         self.model = model
