@@ -1,5 +1,5 @@
 [project]
-name = "tianshu"
+name = "tsagent"
 version = "0.3.0"
 description = "A code agent built from scratch, no frameworks"
 readme = "README.md"
