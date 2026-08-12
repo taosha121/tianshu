@@ -1,13 +1,26 @@
-# lingjiyidong
+# 天枢 · Tianshu
 
-*Spark once. Code forever.*
+<pre align="center">
 
-A code agent built from scratch — no frameworks, no magic.
+         ·  ─────────────  ◆
+         │                       │
+         ·  ─────────────  ·
+                              ·  ──  ·  ──  ·
+
+</pre>
+
+**Tianshu** (天枢, *Celestial Pivot*) is the first star of the Big Dipper — the fixed point around which the northern sky revolves.
+
+An AI code agent that thinks, plans, and acts. Give it a task; watch the loop turn.
+
+**天枢**（*天上的枢轴*）是北斗七星第一星——北方星空围绕其旋转的固定点。
+
+一个会思考、规划、执行的 AI 代码 Agent。给它一个任务，看循环运转。
 
 ## Installation
 
 ```bash
-pip install lingjiyidong
+pip install tianshu
 ```
 
 ## Setup
@@ -22,7 +35,7 @@ ANTHROPIC_BASE_URL=https://api.anthropic.com  # optional, defaults to official A
 Then start the agent:
 
 ```bash
-lj
+ts
 ```
 
 ## Features
@@ -37,7 +50,7 @@ lj
 ## Project Structure
 
 ```
-lingjiyidong/
+tianshu/
 ├── main.py                    # CLI entry point, banner, input loop
 └── agent/
     ├── __init__.py            # re-exports Agent

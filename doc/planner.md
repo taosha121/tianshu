@@ -34,7 +34,7 @@ PENDING → RUNNING → DONE
 
 ## Planner：目标 → 步骤列表
 
-实现在 [lingjiyidong/agent/planner.py](../lingjiyidong/agent/planner.py) 的 `Planner` 类。
+实现在 [tianshu/agent/planner.py](../tianshu/agent/planner.py) 的 `Planner` 类。
 
 只做一件事：调用一次 API，让模型把目标拆成 3-8 个步骤，返回 JSON。
 

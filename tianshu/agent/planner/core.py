@@ -79,7 +79,7 @@ class Planner:
 
     def decompose(self, goal: str) -> "Plan | None":
         # try skill semantic match first; if matched, return predefined steps directly
-        from lingjiyidong.agent.skills import SkillLoader
+        from tianshu.agent.skills import SkillLoader
         skill = SkillLoader().match(goal, self.client, self.model)
         if skill:
             print(f"  [skill] matched: {skill.name}")
@@ -200,7 +200,7 @@ class PlanExecutor:
                 while step.attempts < _MAX_RETRIES:
                     step.attempts += 1
                     try:
-                        from lingjiyidong.agent import Agent
+                        from tianshu.agent import Agent
                         step_agent = Agent(
                             model=self.agent.model,
                             cwd=self.agent.cwd,

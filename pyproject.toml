@@ -1,5 +1,5 @@
 [project]
-name = "lingjiyidong"
+name = "tianshu"
 version = "0.3.0"
 description = "A code agent built from scratch, no frameworks"
 readme = "README.md"
@@ -12,10 +12,10 @@ dependencies = [
 ]
 
 [project.scripts]
-lj = "lingjiyidong.main:main"
+ts = "tianshu.main:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["lingjiyidong"]
+packages = ["tianshu"]
 
 [build-system]
 requires = ["hatchling"]

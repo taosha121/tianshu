@@ -30,7 +30,7 @@ ReAct 的三个步骤直接映射到 Anthropic API 的响应结构上：
 
 ## 核心循环代码
 
-完整实现在 [lingjiyidong/agent/__init__.py](../lingjiyidong/agent/__init__.py) 的 `Agent.chat()` 方法：
+完整实现在 [tianshu/agent/__init__.py](../tianshu/agent/__init__.py) 的 `Agent.chat()` 方法：
 
 ```python
 for _ in range(_MAX_ITERATIONS):          # 最多 10 轮，防止无限循环

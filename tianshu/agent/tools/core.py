@@ -209,7 +209,7 @@ def web_fetch(url: str) -> str:
 
 
 def save_memory(note: str, workspace: str = ".") -> str:
-    from lingjiyidong.agent.memory.longterm import LongTermMemory
+    from tianshu.agent.memory.longterm import LongTermMemory
     mem = LongTermMemory(workspace)
     mem.append(note)
     return f"Saved to memory: {note}"

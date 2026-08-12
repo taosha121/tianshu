@@ -62,7 +62,7 @@ Anthropic 的 tool use API 提供了标准协议：开发者在请求里声明�
 
 ## 工具的实现结构
 
-每个工具是一个 `Tool` dataclass（定义在 [lingjiyidong/agent/tools/__init__.py](../lingjiyidong/agent/tools/__init__.py)）：
+每个工具是一个 `Tool` dataclass（定义在 [tianshu/agent/tools/__init__.py](../tianshu/agent/tools/__init__.py)）：
 
 ```python
 @dataclass
@@ -89,7 +89,7 @@ class Tool:
 
 ## 工具注册：让模型知道有哪些工具
 
-在 [lingjiyidong/agent/__init__.py](../lingjiyidong/agent/__init__.py) 顶部：
+在 [tianshu/agent/__init__.py](../tianshu/agent/__init__.py) 顶部：
 
 ```python
 _TOOL_SCHEMAS = [t.to_api_dict() for t in TOOLS]

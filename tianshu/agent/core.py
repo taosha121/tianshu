@@ -5,9 +5,9 @@ from pathlib import Path
 import anthropic
 from dotenv import load_dotenv
 
-from lingjiyidong.agent.memory import ContextManager, LongTermMemory
-from lingjiyidong.agent.planner import Planner, PlanExecutor, Plan, Step
-from lingjiyidong.agent.tools import TOOLS, TOOL_MAP
+from tianshu.agent.memory import ContextManager, LongTermMemory
+from tianshu.agent.planner import Planner, PlanExecutor, Plan, Step
+from tianshu.agent.tools import TOOLS, TOOL_MAP
 
 load_dotenv()
 

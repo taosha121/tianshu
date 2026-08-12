@@ -16,7 +16,7 @@ Agent 有两类记忆，解决的是两个不同的问题：
 
 ## 短期记忆：ContextManager
 
-实现在 [lingjiyidong/agent/memory/context.py](../lingjiyidong/agent/memory/context.py)。
+实现在 [tianshu/agent/memory/context.py](../tianshu/agent/memory/context.py)。
 
 管理的是 `self.history`——每轮对话追加的消息列表。每条消息是一个 `{"role": ..., "content": ...}` 字典，随每次 API 请求整体发给模型。
 
@@ -55,7 +55,7 @@ system = self._system_prompt + self.longterm.system_addendum + self.context.syst
 
 ## 长期记忆：LongTermMemory
 
-实现在 [lingjiyidong/agent/memory/longterm.py](../lingjiyidong/agent/memory/longterm.py)。
+实现在 [tianshu/agent/memory/longterm.py](../tianshu/agent/memory/longterm.py)。
 
 存储在工作目录的 `.agent/memory.md` 文件里，纯文本，Markdown 格式。
 

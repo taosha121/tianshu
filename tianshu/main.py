@@ -1,7 +1,7 @@
 import os
 
-from lingjiyidong.agent import Agent
-from lingjiyidong.agent.skills import SkillLoader
+from tianshu.agent import Agent
+from tianshu.agent.skills import SkillLoader
 
 _RESET = "\033[0m"
 _BOLD = "\033[1m"
@@ -49,13 +49,13 @@ def _print_banner():
     print(mid(f" {_MAGENTA}╭{'·' * IW}╮{_RESET} "))
     print(inner(" " * IW))
 
-    print(content("╭────────╮",  f"{_CYAN}╭────────╮{_RESET}",
-                  "lingjiyidong  v0.3.0", f"{_BOLD}{_GREEN}lingjiyidong{_RESET}  {_DIM}v0.3.0{_RESET}"))
-    print(content("│ ◉    ◉ │",  f"{_CYAN}│{_RESET} {_YELLOW}◉{_RESET}    {_YELLOW}◉{_RESET} {_CYAN}│{_RESET}",
-                  "Spark once. Code forever.", f"{_DIM}Spark once. Code forever.{_RESET}"))
-    print(content("│   ──   │",  f"{_CYAN}│{_RESET}   {_MAGENTA}──{_RESET}   {_CYAN}│{_RESET}"))
-    print(content("╰───┬────╯",  f"{_CYAN}╰───┬────╯{_RESET}"))
-    print(content("    │",       f"    {_CYAN}│{_RESET}"))
+    print(content("·──◆",  f"{_DIM}·──{_RESET}{_YELLOW}◆{_RESET}",
+                  "天枢  v0.3.0", f"{_BOLD}{_GREEN}天枢{_RESET}  {_DIM}v0.3.0{_RESET}"))
+    print(content("│  │",   f"{_DIM}│  │{_RESET}",
+                  "执枢御变", f"{_DIM}执枢御变{_RESET}"))
+    print(content("·──·",   f"{_DIM}·──·{_RESET}"))
+    print(content("    ·",  f"    {_DIM}·{_RESET}"))
+    print(content("     ·─·", f"     {_DIM}·─·{_RESET}"))
 
     print(inner(" " * IW))
     print(cmd("/<skill>       run a predefined skill directly",
