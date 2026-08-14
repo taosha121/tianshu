@@ -78,14 +78,6 @@ class Planner:
         self.model = model
 
     def decompose(self, goal: str) -> "Plan | None":
-        # try skill semantic match first; if matched, return predefined steps directly
-        from tianshu.agent.skills import SkillLoader
-        skill = SkillLoader().match(goal, self.client, self.model)
-        if skill:
-            print(f"  [skill] matched: {skill.name}")
-            steps = [Step(index=i, description=d) for i, d in enumerate(skill.steps)]
-            return Plan(goal=goal, steps=steps)
-
         response = self.client.messages.create(
             model=self.model,
             max_tokens=1024,

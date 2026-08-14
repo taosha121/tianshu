@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 
 from tianshu.agent.memory import ContextManager, LongTermMemory
 from tianshu.agent.planner import Planner, PlanExecutor, Plan, Step
+from tianshu.agent.skills import SkillLoader
 from tianshu.agent.tools import TOOLS, TOOL_MAP
 
 load_dotenv()
@@ -217,8 +218,12 @@ class Agent:
         return "Maximum iterations reached without completing the task."
 
     def execute(self, goal: str) -> str:
-        planner = Planner(self.client, self.model)
-        plan = planner.decompose(goal)
+        skill = SkillLoader().match(goal, self.client, self.model)
+        if skill:
+            print(f"  [skill] matched: {skill.name}")
+            return self.execute_skill(skill)
+
+        plan = Planner(self.client, self.model).decompose(goal)
         if plan is None:
             return self.chat(goal)
         return PlanExecutor(self).execute(plan)

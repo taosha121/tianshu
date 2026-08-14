@@ -1,0 +1,321 @@
+<mxfile host="app.diagrams.net" agent="Claude Code">
+  <diagram name="Tianshu Agent Flow" id="tianshu-flow">
+    <mxGraphModel dx="1414" dy="667" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="2339" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="n_start" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;fontSize=12;" value="User prompt (CLI: ts)" vertex="1">
+          <mxGeometry height="50" width="180" x="545" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="n_agent_init" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" value="Agent.__init__()&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot;&gt;_build_system_prompt() — cwd, git, outline&lt;/font&gt;" vertex="1">
+          <mxGeometry height="50" width="220" x="525" y="110" as="geometry" />
+        </mxCell>
+        <mxCell id="d_slash" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" value="starts&lt;br&gt;with /?" vertex="1">
+          <mxGeometry height="70" width="90" x="590" y="205" as="geometry" />
+        </mxCell>
+        <mxCell id="n_find" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6b656;" value="&lt;b&gt;SkillLoader.find(name)&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot;&gt;direct dict lookup — NO LLM&lt;/font&gt;" vertex="1">
+          <mxGeometry height="50" width="220" x="195" y="215" as="geometry" />
+        </mxCell>
+        <mxCell id="d_found" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" value="skill&lt;br&gt;found?" vertex="1">
+          <mxGeometry height="70" width="90" x="260" y="310" as="geometry" />
+        </mxCell>
+        <mxCell id="n_not_found" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" value="print error + available skills" vertex="1">
+          <mxGeometry height="40" width="170" x="60" y="325" as="geometry" />
+        </mxCell>
+        <mxCell id="n_execute" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" value="agent.execute(goal)" vertex="1">
+          <mxGeometry height="40" width="160" x="765" y="215" as="geometry" />
+        </mxCell>
+        <mxCell id="n_skill_match" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6b656;" value="&lt;b&gt;SkillLoader.match(goal)&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot;&gt;LLM #1 — _MATCH_PROMPT, semantic match ≥ 80%&lt;/font&gt;" vertex="1">
+          <mxGeometry height="50" width="220" x="735" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="d_skill_matched" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" value="skill&lt;br&gt;matched?" vertex="1">
+          <mxGeometry height="70" width="90" x="790" y="370" as="geometry" />
+        </mxCell>
+        <mxCell id="n_execute_skill" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" value="execute_skill(skill)&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot;&gt;build Plan from skill.steps&lt;/font&gt;" vertex="1">
+          <mxGeometry height="50" width="210" x="400" y="440" as="geometry" />
+        </mxCell>
+        <mxCell id="n_planner" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6b656;" value="&lt;b&gt;Planner.decompose(goal)&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot;&gt;LLM #2 — _PLAN_PROMPT&lt;/font&gt;" vertex="1">
+          <mxGeometry height="50" width="210" x="735" y="463" as="geometry" />
+        </mxCell>
+        <mxCell id="d_needs_plan" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" value="needs_&lt;br&gt;plan?" vertex="1">
+          <mxGeometry height="70" width="90" x="795" y="535" as="geometry" />
+        </mxCell>
+        <mxCell id="n_plan_executor" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" value="PlanExecutor.execute(plan)" vertex="1">
+          <mxGeometry height="45" width="200" x="405" y="550" as="geometry" />
+        </mxCell>
+        <mxCell id="n_thread_pool" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" value="ThreadPoolExecutor (max_workers=4)&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot;&gt;schedules steps by depends_on DAG&lt;/font&gt;" vertex="1">
+          <mxGeometry height="50" width="250" x="380" y="645" as="geometry" />
+        </mxCell>
+        <mxCell id="n_dag_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fffde7;strokeColor=#d6b656;strokeWidth=2;dashed=1;verticalAlign=top;fontStyle=1;fontSize=11;" value="3–8 steps · up to 4 parallel" vertex="1">
+          <mxGeometry height="295" width="415" x="215" y="715" as="geometry" />
+        </mxCell>
+        <mxCell id="n_s1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6b656;" value="&lt;b&gt;Step i&lt;/b&gt; — Agent().chat(ctx)&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot;&gt;depends_on=[0] — parallel&lt;/font&gt;" vertex="1">
+          <mxGeometry height="50" width="150" x="245" y="840" as="geometry" />
+        </mxCell>
+        <mxCell id="n_dots2" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=20;fontStyle=1;" value="..." vertex="1">
+          <mxGeometry height="30" width="40" x="400" y="852" as="geometry" />
+        </mxCell>
+        <mxCell id="n_s2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6b656;" value="&lt;b&gt;Step j&lt;/b&gt; — Agent().chat(ctx)&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot;&gt;depends_on=[0] — parallel&lt;/font&gt;" vertex="1">
+          <mxGeometry height="50" width="150" x="455" y="837.5" as="geometry" />
+        </mxCell>
+        <mxCell id="n_s3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6b656;" value="&lt;b&gt;Step N&lt;/b&gt; — Agent().chat(ctx)&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot;&gt;depends_on=[i,j,...] — last&lt;/font&gt;" vertex="1">
+          <mxGeometry height="50" width="150" x="343" y="940" as="geometry" />
+        </mxCell>
+        <mxCell id="d_all_done" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" value="all steps&lt;br&gt;DONE?" vertex="1">
+          <mxGeometry height="70" width="100" x="720" y="950" as="geometry" />
+        </mxCell>
+        <mxCell id="n_main_chat" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6b656;" value="&lt;b&gt;Agent.chat(goal)&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot;&gt;LLM #3+ — ReAct loop&lt;/font&gt;" vertex="1">
+          <mxGeometry height="50" width="170" x="930" y="545" as="geometry" />
+        </mxCell>
+        <mxCell id="n_react_simple" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" value="API call (system + messages + tools)" vertex="1">
+          <mxGeometry height="40" width="195" x="917.5" y="648" as="geometry" />
+        </mxCell>
+        <mxCell id="d_tool_simple" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" value="stop_reason&lt;br&gt;== tool_use?" vertex="1">
+          <mxGeometry height="70" width="120" x="955" y="734" as="geometry" />
+        </mxCell>
+        <mxCell id="n_exec_simple" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" value="Execute tool&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot;&gt;TOOL_MAP[name](**input)&lt;/font&gt;" vertex="1">
+          <mxGeometry height="45" width="160" x="820" y="850" as="geometry" />
+        </mxCell>
+        <mxCell id="n_return_simple" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;" value="Return text" vertex="1">
+          <mxGeometry height="40" width="120" x="1030" y="850" as="geometry" />
+        </mxCell>
+        <mxCell id="n_replanner" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" value="&lt;b&gt;Replanner.replan()&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot;&gt;LLM extra — _REPLAN_PROMPT&lt;/font&gt;" vertex="1">
+          <mxGeometry height="50" width="190" x="305" y="1077" as="geometry" />
+        </mxCell>
+        <mxCell id="d_replan" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" value="action?" vertex="1">
+          <mxGeometry height="70" width="90" x="355" y="1162" as="geometry" />
+        </mxCell>
+        <mxCell id="n_replan_skip" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" value="skip — mark DONE" vertex="1">
+          <mxGeometry height="40" width="150" x="520" y="1175" as="geometry" />
+        </mxCell>
+        <mxCell id="n_replan_retry" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" value="retry — new step.desc&lt;br&gt;reset status = PENDING" vertex="1">
+          <mxGeometry height="45" width="190" x="305" y="1270" as="geometry" />
+        </mxCell>
+        <mxCell id="n_replan_replace" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" value="replace — add new steps&lt;br&gt;drop remaining PENDING" vertex="1">
+          <mxGeometry height="40" width="175" x="100" y="1175" as="geometry" />
+        </mxCell>
+        <mxCell id="n_final_summary" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" value="_final_summary()&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot;&gt;collect all step results + output files&lt;/font&gt;" vertex="1">
+          <mxGeometry height="50" width="180" x="315" y="1372" as="geometry" />
+        </mxCell>
+        <mxCell id="n_return_final" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;" value="Return result" vertex="1">
+          <mxGeometry height="50" width="140" x="335" y="1472" as="geometry" />
+        </mxCell>
+        <mxCell id="note_skill_match" parent="1" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#fff9c4;strokeColor=#d6b656;align=left;fontSize=10;" value="&lt;b&gt;LLM #1 — _MATCH_PROMPT&lt;/b&gt;&lt;br&gt;You are a skill router.&lt;br&gt;Does the goal match a predefined skill (≥80%)?&lt;br&gt;&lt;br&gt;User goal: {goal}&lt;br&gt;Available skills:&lt;br&gt;  - {name}: {description}&lt;br&gt;&lt;br&gt;Return: {&quot;match&quot;: &quot;skill_name&quot;} or {&quot;match&quot;: null}" vertex="1">
+          <mxGeometry height="150" width="310" x="1160" y="125" as="geometry" />
+        </mxCell>
+        <mxCell id="note_plan" parent="1" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#fff9c4;strokeColor=#d6b656;align=left;fontSize=10;" value="&lt;b&gt;LLM #2 — _PLAN_PROMPT&lt;/b&gt;&lt;br&gt;You are a task planner.&lt;br&gt;&lt;br&gt;needs_plan=true: multiple independent ops /&lt;br&gt;  sequential steps / &gt;5 tool calls&lt;br&gt;needs_plan=false: simple Q&amp;A / single-file /&lt;br&gt;  lookup task&lt;br&gt;&lt;br&gt;Goal: {goal}&lt;br&gt;&lt;br&gt;Return:&lt;br&gt;  {&quot;needs_plan&quot;: false, &quot;steps&quot;: []}&lt;br&gt;  {&quot;needs_plan&quot;: true, &quot;steps&quot;: [{&quot;desc&quot;: ..., &quot;depends_on&quot;: []}]}" vertex="1">
+          <mxGeometry height="195" width="310" x="1160" y="325" as="geometry" />
+        </mxCell>
+        <mxCell id="note_main_sys" parent="1" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#fff9c4;strokeColor=#d6b656;align=left;fontSize=10;" value="&lt;b&gt;LLM #3+ — Agent.chat(goal)&lt;/b&gt;&lt;br&gt;&lt;b&gt;System&lt;/b&gt; (built once in __init__, reused each call):&lt;br&gt;  ① _system_prompt (base):&lt;br&gt;     &quot;You are an expert coding agent...&quot;&lt;br&gt;     Working directory: {cwd}&lt;br&gt;     Project type: Python / Node.js / Go / Rust&lt;br&gt;     Top-level structure: src/, tests/, ...&lt;br&gt;     Repo outline (≤500 chars):&lt;br&gt;       file.py: 5: def func(), 12: class Cls&lt;br&gt;     Git status / branch&lt;br&gt;  ② + longterm.system_addendum:&lt;br&gt;     ~/.agent/memory/*.md contents&lt;br&gt;  ③ + context.system_addendum:&lt;br&gt;     Compressed history summary (if triggered)&lt;br&gt;&lt;br&gt;Messages: [{role: user, content: goal}, ...]&lt;br&gt;Tools: TOOL_SCHEMAS (read_file, bash, grep_files, ...)" vertex="1">
+          <mxGeometry height="255" width="360" x="1160" y="540" as="geometry" />
+        </mxCell>
+        <mxCell id="note_step_ctx" parent="1" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#fff9c4;strokeColor=#d6b656;align=left;fontSize=10;" value="&lt;b&gt;LLM #4+ — Step Agent (one per plan step)&lt;/b&gt;&lt;br&gt;&lt;b&gt;System:&lt;/b&gt; same _system_prompt as parent Agent&lt;br&gt;  (reused — no re-scan of rglob / git status)&lt;br&gt;&lt;br&gt;&lt;b&gt;User&lt;/b&gt; (_build_context()):&lt;br&gt;  Overall goal: {plan.goal}&lt;br&gt;  Current step: {step.description}&lt;br&gt;  Shared workspace: {workspace_path}&lt;br&gt;    (read/write files to pass outputs between steps)&lt;br&gt;  Output files from prerequisite steps:&lt;br&gt;    - {plan.steps[i].outputs[0]}&lt;br&gt;    - ...&lt;br&gt;&lt;br&gt;Same ReAct loop as main agent:&lt;br&gt;  API call → tool_use? → execute → loop&lt;br&gt;  max 10 iterations · TOOL_SCHEMAS identical" vertex="1">
+          <mxGeometry height="255" width="360" x="1160" y="850" as="geometry" />
+        </mxCell>
+        <mxCell id="note_replan" parent="1" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#f8cecc;strokeColor=#b85450;align=left;fontSize=10;" value="&lt;b&gt;LLM extra — _REPLAN_PROMPT&lt;/b&gt;&lt;br&gt;A step has failed. Decide how to adjust.&lt;br&gt;&lt;br&gt;Overall goal: {goal}&lt;br&gt;Completed steps:&lt;br&gt;  [{index}] {desc}: {result[:100]}&lt;br&gt;Failed step:&lt;br&gt;  [{index}] {desc}: {error[:200]}&lt;br&gt;&lt;br&gt;Return:&lt;br&gt;  {&quot;action&quot;: &quot;skip&quot;}&lt;br&gt;  {&quot;action&quot;: &quot;retry&quot;, &quot;desc&quot;: &quot;new desc&quot;}&lt;br&gt;  {&quot;action&quot;: &quot;replace&quot;, &quot;steps&quot;: [...]}" vertex="1">
+          <mxGeometry height="200" width="310" x="1160" y="1162" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" edge="1" parent="1" source="n_start" style="edgeStyle=orthogonalEdgeStyle;html=1;" target="n_agent_init">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" edge="1" parent="1" source="n_agent_init" style="edgeStyle=orthogonalEdgeStyle;html=1;" target="d_slash">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" edge="1" parent="1" source="d_slash" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;" target="n_find" value="YES">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" edge="1" parent="1" source="d_slash" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" target="n_execute" value="NO">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" edge="1" parent="1" source="n_find" style="edgeStyle=orthogonalEdgeStyle;html=1;" target="d_found">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" edge="1" parent="1" source="d_found" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;" target="n_not_found" value="NO">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" edge="1" parent="1" source="d_found" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="n_execute_skill" value="YES">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="305.06" y="465" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e8" edge="1" parent="1" source="n_execute" style="edgeStyle=orthogonalEdgeStyle;html=1;" target="n_skill_match">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e9" edge="1" parent="1" source="n_skill_match" style="edgeStyle=orthogonalEdgeStyle;html=1;" target="d_skill_matched">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e10" edge="1" parent="1" source="d_skill_matched" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="n_execute_skill" value="YES">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e11" edge="1" parent="1" source="d_skill_matched" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" target="n_planner" value="NO">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e12" edge="1" parent="1" source="n_execute_skill" style="edgeStyle=orthogonalEdgeStyle;html=1;" target="n_plan_executor">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e13" edge="1" parent="1" source="n_planner" style="edgeStyle=orthogonalEdgeStyle;html=1;" target="d_needs_plan">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e14" edge="1" parent="1" source="d_needs_plan" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="n_plan_executor" value="YES">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e15" edge="1" parent="1" source="d_needs_plan" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" target="n_main_chat" value="NO">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e16" edge="1" parent="1" source="n_plan_executor" style="edgeStyle=orthogonalEdgeStyle;html=1;" target="n_thread_pool">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e17" edge="1" parent="1" source="n_thread_pool" style="edgeStyle=orthogonalEdgeStyle;html=1;" target="n_s0">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_s0_s1" edge="1" parent="1" source="n_s0" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" target="n_s1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="420" y="795" />
+              <mxPoint x="420" y="820" />
+              <mxPoint x="350" y="820" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_s0_s2" edge="1" parent="1" source="n_s0" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" target="n_s2">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="420" y="795" />
+              <mxPoint x="420" y="820" />
+              <mxPoint x="555" y="820" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_s1_s3" edge="1" parent="1" source="n_s1" style="edgeStyle=orthogonalEdgeStyle;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="n_s3">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="350" y="900.1" />
+              <mxPoint x="418" y="900.1" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_s2_s3" edge="1" parent="1" source="n_s2" style="edgeStyle=orthogonalEdgeStyle;html=1;" target="n_s3">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="530" y="900.1" />
+              <mxPoint x="418" y="900.1" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_s3_done" edge="1" parent="1" source="n_dag_box" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" target="d_all_done">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_fail" edge="1" parent="1" source="n_dag_box" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;" target="n_replanner" value="&lt;font style=&quot;font-size:9px;&quot;&gt;step FAILED (max retries)&lt;/font&gt;">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="170" y="862.5" />
+              <mxPoint x="170" y="1050" />
+              <mxPoint x="400" y="1050" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e25" edge="1" parent="1" source="n_replanner" style="edgeStyle=orthogonalEdgeStyle;html=1;" target="d_replan">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e26" edge="1" parent="1" source="d_replan" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" target="n_replan_skip" value="skip">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e27" edge="1" parent="1" source="d_replan" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" target="n_replan_retry" value="retry">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e28" edge="1" parent="1" source="d_replan" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;" target="n_replan_replace" value="replace">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e30" edge="1" parent="1" source="n_replan_replace" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;strokeColor=#d6b656;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="n_thread_pool" value="add new steps">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="55" y="1195" />
+              <mxPoint x="55" y="670" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e31" edge="1" parent="1" source="n_replan_skip" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" target="n_final_summary">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="595" y="1397" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_alldone_yes" edge="1" parent="1" source="d_all_done" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" target="n_final_summary" value="YES">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="770" y="1340" />
+              <mxPoint x="405.1" y="1340" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_alldone_no" edge="1" parent="1" source="d_all_done" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" target="n_replanner" value="NO (has failures)">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e33" edge="1" parent="1" source="n_final_summary" style="edgeStyle=orthogonalEdgeStyle;html=1;" target="n_return_final">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e34" edge="1" parent="1" source="n_main_chat" style="edgeStyle=orthogonalEdgeStyle;html=1;" target="n_react_simple">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e35" edge="1" parent="1" source="n_react_simple" style="edgeStyle=orthogonalEdgeStyle;html=1;" target="d_tool_simple">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e36" edge="1" parent="1" source="d_tool_simple" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;" target="n_exec_simple" value="YES">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e37" edge="1" parent="1" source="d_tool_simple" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" target="n_return_simple" value="NO">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e38" edge="1" parent="1" source="n_exec_simple" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="n_react_simple" value="append result">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="780" y="872" />
+              <mxPoint x="780" y="670" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="en1" edge="1" parent="1" source="n_skill_match" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;strokeColor=#d6b656;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;" target="note_skill_match">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="en2" edge="1" parent="1" source="n_planner" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;strokeColor=#d6b656;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" target="note_plan">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="en3" edge="1" parent="1" source="n_main_chat" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;strokeColor=#d6b656;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" target="note_main_sys">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="en4" edge="1" parent="1" source="n_s2" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;strokeColor=#d6b656;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" target="note_step_ctx">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="605" y="920" />
+              <mxPoint x="860" y="920" />
+              <mxPoint x="860" y="977.5" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="en5" edge="1" parent="1" source="n_replanner" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;strokeColor=#b85450;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" target="note_replan">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="910" y="1102" />
+              <mxPoint x="910" y="1315" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="TnBm4I2FsffWbyj7g_Hh-1" edge="1" parent="1" source="n_replan_retry" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;strokeColor=#d6b656;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="n_thread_pool" value="reschedule">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="305" y="1290" />
+              <mxPoint x="90" y="1290" />
+              <mxPoint x="90" y="670" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="n_s0" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6b656;" value="&lt;b&gt;Step 0&lt;/b&gt; — Agent().chat(ctx)&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot;&gt;no deps — runs immediately&lt;/font&gt;" vertex="1">
+          <mxGeometry height="50" width="150" x="343" y="745" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

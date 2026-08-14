@@ -47,6 +47,10 @@ ts
 - **Long-term memory**: important information is persisted and loaded on next startup
 - **Context compression**: long conversations are compressed automatically to stay within the context window
 
+## Architecture
+
+![Agent Flow](resources/agent-flow.drawio.svg)
+
 ## Project Structure
 
 ```
