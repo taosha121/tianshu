@@ -11,7 +11,7 @@ Name the goal. Tianshu thinks, plans, and executes — step by step, until done.
 ## Installation
 
 ```bash
-pip install tianshu
+make install
 ```
 
 ## Setup
@@ -19,14 +19,15 @@ pip install tianshu
 Create a `.env` file in your project root:
 
 ```bash
-ANTHROPIC_API_KEY=your_key
-ANTHROPIC_BASE_URL=https://api.anthropic.com  # optional, defaults to official API
+ANTHROPIC_API_KEY=your_anthropic_api_key
+ANTHROPIC_BASE_URL=http://localhost:6655/anthropic
+TAVILY_API_KEY=your_tavily_api_key
 ```
 
 Then start the agent:
 
 ```bash
-ts
+make run
 ```
 
 ## Features
