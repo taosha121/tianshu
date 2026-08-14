@@ -1,13 +1,8 @@
-# 天枢 · Tianshu
+<p align="center">
+  <img src="resources/icon.png" width="160" alt="天枢 icon" />
+</p>
 
-<pre align="center">
-
-         ·  ─────────────  ◆
-         │                       │
-         ·  ─────────────  ·
-                              ·  ──  ·  ──  ·
-
-</pre>
+![](resources/banner.png)
 
 **Tianshu** (天枢, *Celestial Pivot*) is the first star of the Big Dipper — the fixed point around which the northern sky revolves.
 
