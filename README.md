@@ -1,16 +1,12 @@
-<p align="center">
-  <img src="resources/icon.png" width="160" alt="天枢 icon" />
-</p>
-
 ![](resources/banner.png)
 
 **Tianshu** (天枢, *Celestial Pivot*) is the first star of the Big Dipper — the fixed point around which the northern sky revolves.
 
-An AI code agent that thinks, plans, and acts. Give it a task; watch the loop turn.
+Name the goal. Tianshu thinks, plans, and executes — step by step, until done.
 
-**天枢**（*天上的枢轴*）是北斗七星第一星——北方星空围绕其旋转的固定点。
+**枢运北斗，御动九天。**
 
-一个会思考、规划、执行的 AI 代码 Agent。给它一个任务，看循环运转。
+说出目标，天枢自行思考、拆解、执行，直至完成。
 
 ## Installation
 
