@@ -22,6 +22,7 @@ Create a `.env` file in your project root:
 ANTHROPIC_API_KEY=your_anthropic_api_key
 ANTHROPIC_BASE_URL=http://localhost:6655/anthropic
 TAVILY_API_KEY=your_tavily_api_key
+AGENT_MODEL=anthropic--claude-4.6-sonnet  # optional, defaults to claude-4.5-sonnet
 ```
 
 Then start the agent:

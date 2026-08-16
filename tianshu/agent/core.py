@@ -12,6 +12,35 @@ from tianshu.agent.tools import TOOLS, TOOL_MAP
 
 load_dotenv()
 
+from tianshu.agent._ctx import _step_ctx
+
+_DIM   = "\033[2m"
+_RESET = "\033[0m"
+
+_KEY_ARG: dict[str, str] = {
+    "bash":             "command",
+    "read_file":        "path",
+    "write_file":       "path",
+    "edit_file":        "path",
+    "create_directory": "path",
+    "get_outline":      "path",
+    "find_symbol":      "name",
+    "grep_files":       "pattern",
+    "list_files":       "path",
+    "web_search":       "query",
+    "web_fetch":        "url",
+    "save_memory":      "content",
+}
+
+
+def _format_tool_call(name: str, inp: dict) -> str:
+    key = _KEY_ARG.get(name)
+    arg = str(inp.get(key, "")) if key else str(inp)
+    if len(arg) > 60:
+        arg = arg[:57] + "..."
+    return f"{name}  {arg}"
+
+
 _TOOL_SCHEMAS = [t.to_api_dict() for t in TOOLS]
 _MAX_ITERATIONS = 10
 
@@ -161,7 +190,7 @@ def _build_system_prompt(cwd: str) -> str:
 class Agent:
     def __init__(
         self,
-        model: str = "anthropic--claude-4.5-sonnet",
+        model: str | None = None,
         cwd: str | None = None,
         # plan-mode steps reuse the parent Agent's system prompt to avoid
         # re-running the rglob + git status scan for every step
@@ -171,7 +200,7 @@ class Agent:
             base_url=os.environ.get("ANTHROPIC_BASE_URL"),
             api_key=os.environ["ANTHROPIC_API_KEY"],
         )
-        self.model = model
+        self.model = model or os.environ.get("AGENT_MODEL", "anthropic--claude-4.5-sonnet")
         self.cwd = cwd or os.getcwd()
         self.history = []
         self.context = ContextManager()
@@ -195,8 +224,25 @@ class Agent:
 
             self.history.append({"role": "assistant", "content": response.content})
 
-            if response.stop_reason != "tool_use":
-                return response.content[0].text
+            def _extract_text() -> str:
+                texts = [b.text for b in response.content if b.type == "text"]
+                return texts[0] if texts else ""
+
+            match response.stop_reason:
+                case "end_turn" | "stop_sequence":
+                    return _extract_text()
+                case "max_tokens":
+                    partial = _extract_text()
+                    return partial + "\n[response truncated: max_tokens reached]"
+                case "pause_turn":
+                    return _extract_text() or "[paused]"
+                case "refusal":
+                    return "[model refused to respond]"
+                case "tool_use":
+                    pass
+                case _:
+                    text = _extract_text()
+                    return text if text else f"[stopped: {response.stop_reason}]"
 
             tool_results = []
             for block in response.content:
@@ -205,8 +251,9 @@ class Agent:
                 tool = TOOL_MAP.get(block.name)
                 result = tool.func(**block.input) if tool else f"Unknown tool: {block.name}"
                 result = _truncate_result(block.name, result)
-                preview = result if len(result) <= 100 else result[:100] + "..."
-                print(f"  [tool] {block.name}({block.input}) -> {preview}")
+                label = getattr(_step_ctx, "label", "")
+                prefix = f"{label} " if label else ""
+                print(f"  {_DIM}{prefix}· {_format_tool_call(block.name, block.input)}{_RESET}")
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": block.id,

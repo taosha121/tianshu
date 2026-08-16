@@ -7,6 +7,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from tianshu.agent._ctx import _step_ctx
+
 
 class StepStatus(Enum):
     PENDING = "pending"
@@ -182,6 +184,7 @@ class PlanExecutor:
                 )
 
             def run_step(step: Step) -> None:
+                _step_ctx.label = f"[{step.index + 1}]"
                 with self._lock:
                     step.status = StepStatus.RUNNING
                     print(f"[{step.index + 1}/{len(plan.steps)}] Starting: {step.description}")
