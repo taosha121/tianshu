@@ -9,6 +9,7 @@ dependencies = [
     "httpx",
     "python-dotenv",
     "PyYAML",
+    "pyfiglet",
 ]
 
 [project.scripts]

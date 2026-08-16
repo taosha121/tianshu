@@ -1,75 +1,37 @@
 import os
 
+import pyfiglet
+
 from tianshu.agent import Agent
 from tianshu.agent.skills import SkillLoader
 
-_RESET = "\033[0m"
-_BOLD = "\033[1m"
-_DIM = "\033[2m"
-_GREEN = "\033[32m"
-_CYAN = "\033[36m"
+_RESET  = "\033[0m"
+_BOLD   = "\033[1m"
+_DIM    = "\033[2m"
+_CYAN   = "\033[36m"
 _YELLOW = "\033[33m"
-_MAGENTA = "\033[35m"
 
 
 def _cjk_len(s):
     return sum(2 if ord(c) > 0x2E7F else 1 for c in s)
 
 
+def _cjk_center(s, width):
+    pad = max(0, width - _cjk_len(s))
+    return " " * (pad // 2) + s + " " * (pad - pad // 2)
+
+
 def _print_banner():
-    W = 58
-    MW = W - 4
-    IW = W - 8
-
-    def outer(s):
-        return f"  {_CYAN}│{_RESET}{s}{_CYAN}│{_RESET}"
-
-    def mid(s):
-        return f"  {_CYAN}│{_RESET} {_YELLOW}┆{_RESET}{s}{_YELLOW}┆{_RESET} {_CYAN}│{_RESET}"
-
-    def inner(s):
-        return f"  {_CYAN}│{_RESET} {_YELLOW}┆{_RESET} {_MAGENTA}·{_RESET}{s}{_MAGENTA}·{_RESET} {_YELLOW}┆{_RESET} {_CYAN}│{_RESET}"
-
-    def fill(plain, colored, width):
-        return colored + " " * max(0, width - _cjk_len(plain))
-
-    def content(lp, lc, rp="", rc=""):
-        left = fill(lp, lc, 12)
-        right = fill(rp, rc, IW - 12 - 2)
-        return inner(f" {left} {right}")
-
-    def cmd(plain, colored):
-        return inner(f" {fill(plain, colored, IW - 2)} ")
-
-    print()
-    print(f"  {_CYAN}╭{'─' * W}╮{_RESET}")
-    print(outer(" " * W))
-    print(outer(f" {_YELLOW}╭{'╌' * (W - 4)}╮{_RESET} "))
-    print(mid(" " * MW))
-    print(mid(f" {_MAGENTA}╭{'·' * IW}╮{_RESET} "))
-    print(inner(" " * IW))
-
-    print(content("·──◆",  f"{_DIM}·──{_RESET}{_YELLOW}◆{_RESET}",
-                  "天枢  v0.3.0", f"{_BOLD}{_GREEN}天枢{_RESET}  {_DIM}v0.3.0{_RESET}"))
-    print(content("│  │",   f"{_DIM}│  │{_RESET}",
-                  "执枢御变", f"{_DIM}执枢御变{_RESET}"))
-    print(content("·──·",   f"{_DIM}·──·{_RESET}"))
-    print(content("    ·",  f"    {_DIM}·{_RESET}"))
-    print(content("     ·─·", f"     {_DIM}·─·{_RESET}"))
-
-    print(inner(" " * IW))
-    print(cmd("/<skill>       run a predefined skill directly",
-              f"{_YELLOW}/<skill>{_RESET}       run a predefined skill directly"))
-    print(cmd("exit           quit",
-              f"{_YELLOW}exit{_RESET}           quit"))
-    print(inner(" " * IW))
-
-    print(mid(f" {_MAGENTA}╰{'·' * IW}╯{_RESET} "))
-    print(mid(" " * MW))
-    print(outer(f" {_YELLOW}╰{'╌' * (W - 4)}╯{_RESET} "))
-    print(outer(" " * W))
-    print(f"  {_CYAN}╰{'─' * W}╯{_RESET}")
-    print()
+    W = 80
+    raw_lines = pyfiglet.figlet_format("TIANSHU", font="banner3", width=W).splitlines()
+    stripped   = [line.rstrip() for line in raw_lines]
+    max_w      = max(len(line) for line in stripped)
+    pad        = " " * max(0, (W - max_w) // 2)
+    logo       = "\n".join(_CYAN + pad + line + _RESET for line in stripped)
+    rule   = _DIM + "=" * W + _RESET
+    slogan = _BOLD + _YELLOW + _cjk_center("枢   运   北   斗   ，   御   动   九   天", W) + _RESET
+    info   = _DIM + "Tianshu  v0.3.0".center(W) + _RESET
+    print(f"\n{rule}\n{slogan}\n{rule}\n{logo}\n{rule}\n{info}\n{rule}\n")
 
 
 def main():
