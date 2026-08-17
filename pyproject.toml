@@ -10,10 +10,13 @@ dependencies = [
     "python-dotenv",
     "PyYAML",
     "pyfiglet",
+    "fastapi",
+    "uvicorn[standard]",
 ]
 
 [project.scripts]
 ts = "tianshu.main:main"
+ts-server = "tianshu.server:serve"
 
 [tool.hatch.build.targets.wheel]
 packages = ["tianshu"]

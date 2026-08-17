@@ -1,0 +1,7 @@
+{
+  "sap.app": {
+    "id": "agent-ui",
+    "type": "application",
+    "applicationVersion": { "version": "1.0.0" }
+  }
+}

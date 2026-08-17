@@ -1,0 +1,25 @@
+specVersion: "3.0"
+metadata:
+  name: agent-ui
+type: application
+resources:
+  configuration:
+    paths:
+      webapp: dist
+server:
+  customMiddleware:
+    - name: serve-node-modules
+      beforeMiddleware: serveResources
+    - name: ui5-middleware-livereload
+      afterMiddleware: compression
+      configuration:
+        port: 35729
+        watchPath: dist
+---
+specVersion: "3.0"
+kind: extension
+type: server-middleware
+metadata:
+  name: serve-node-modules
+middleware:
+  path: dev/serveNodeModules.js

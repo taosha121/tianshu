@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Agent Canvas</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { height: 100%; }
+    body {
+      height: 100%;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      font-family: "72", Arial, sans-serif;
+      background: #f5f6f7;
+    }
+    #topbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: #fff;
+      border-bottom: 1px solid #d9d9d9;
+      flex-shrink: 0;
+    }
+    #command-input {
+      flex: 1;
+      height: 36px;
+      padding: 0 10px;
+      border: 1px solid #bbb;
+      border-radius: 4px;
+      font-size: 14px;
+      outline: none;
+    }
+    #command-input:focus { border-color: #0070f2; }
+    #submit-btn {
+      height: 36px;
+      padding: 0 18px;
+      background: #0070f2;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    #submit-btn:hover { background: #0060d0; }
+    #main {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      gap: 12px;
+      padding: 12px;
+      overflow: hidden;
+      background: #f0f2f5;
+    }
+    #canvas {
+      flex: 1;
+      overflow: hidden;
+      border-radius: 8px;
+      border: 1px solid #d9d9d9;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+    }
+    #property-panel {
+      width: 300px;
+      display: none;
+      flex-direction: column;
+      border-radius: 8px;
+      border: 1px solid #d9d9d9;
+      background: #fff;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+    #panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+    }
+    #panel-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #1a1a1a;
+    }
+    #close-panel-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 16px;
+      color: #aaa;
+      line-height: 1;
+      padding: 2px 4px;
+    }
+    #close-panel-btn:hover { color: #333; }
+    #panel-section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #333;
+      padding: 12px 16px 8px;
+    }
+    #panel-body {
+      padding: 0 16px 16px;
+      flex: 1;
+      overflow-y: auto;
+    }
+    .prop-row { margin-bottom: 12px; }
+    .prop-label {
+      display: block;
+      font-size: 11px;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+    .prop-value {
+      font-size: 13px;
+      color: #1a1a1a;
+      background: #f7f8f9;
+      border: 1px solid #e8e8e8;
+      border-radius: 4px;
+      padding: 6px 10px;
+      display: block;
+      word-break: break-all;
+    }
+    #prop-prompt {
+      white-space: pre-wrap;
+      font-family: monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      min-height: 60px;
+    }
+  </style>
+  <script id="sap-ui-bootstrap"
+    src="https://ui5.sap.com/resources/sap-ui-core.js"
+    data-sap-ui-async="true"
+    data-sap-ui-oninit="module:app/main"
+    data-sap-ui-libs="sap.m"
+    data-sap-ui-theme="sap_horizon"
+    data-sap-ui-resourceroots='{
+      "app": "app",
+      "sap.galilei":     "node_modules/@sap/galilei/galilei/lib",
+      "sap.galilei.ui5": "node_modules/@sap/galilei-ui5/galilei/lib/ui5"
+    }'>
+  </script>
+</head>
+<body class="sapUiBody">
+  <div id="topbar">
+    <input id="command-input" type="text" placeholder="Enter a command for the agent…" />
+    <button id="submit-btn">Run</button>
+    <button id="test-btn" style="height:36px;padding:0 14px;background:#888;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px;">Test</button>
+    <button id="update-btn" style="height:36px;padding:0 14px;background:#6c47ff;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px;">Update Sub</button>
+  </div>
+  <div id="main">
+    <div id="canvas"></div>
+    <div id="property-panel">
+      <div id="panel-header">
+        <span id="panel-title" id="prop-id"></span>
+        <button id="close-panel-btn">&#x2715;</button>
+      </div>
+      <div id="panel-section-title">Properties</div>
+      <div id="panel-body">
+        <div class="prop-row">
+          <span class="prop-label">Type</span>
+          <span class="prop-value" id="prop-type"></span>
+        </div>
+        <div class="prop-row">
+          <span class="prop-label">Prompt</span>
+          <pre class="prop-value" id="prop-prompt"></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

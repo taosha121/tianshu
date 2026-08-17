@@ -1,5 +1,6 @@
 import os
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 
 import anthropic
@@ -41,8 +42,21 @@ def _format_tool_call(name: str, inp: dict) -> str:
     return f"{name}  {arg}"
 
 
+def _dump_history(history: list) -> list:
+    result = []
+    for msg in history:
+        content = msg["content"]
+        if isinstance(content, list):
+            content = [
+                item.model_dump() if hasattr(item, "model_dump") else item
+                for item in content
+            ]
+        result.append({"role": msg["role"], "content": content})
+    return result
+
+
 _TOOL_SCHEMAS = [t.to_api_dict() for t in TOOLS]
-_MAX_ITERATIONS = 10
+_MAX_ITERATIONS = 30
 
 _TOOL_MAX_CHARS: dict[str, int] = {
     "read_file": 4_000,
@@ -76,11 +90,13 @@ def _build_system_prompt(cwd: str) -> str:
         "You have access to tools for reading/writing files, running shell commands, searching code, and fetching web content.",
         "Always prefer targeted edits over rewriting entire files. Verify your changes work before reporting completion.",
         "To explore code: use get_outline(path) to see a file's symbols before reading it, and find_symbol(name) to locate definitions.",
+        "When browsing the project, skip these directories entirely — they are not source code: "
+        ".venv, venv, node_modules, dist, build, __pycache__, .git, .agent, vendor, site-packages.",
         "",
         f"Working directory: {cwd}",
     ]
 
-    _SKIP_DIRS = {".venv", "venv", "__pycache__", "dist", "build", "node_modules", ".git", "vendor", "site-packages"}
+    _SKIP_DIRS = {".venv", "venv", "__pycache__", "dist", "build", "node_modules", ".git", ".agent", "vendor", "site-packages"}
     _MAX_OUTLINE_CHARS = 500
 
     p = Path(cwd)
@@ -195,6 +211,9 @@ class Agent:
         # plan-mode steps reuse the parent Agent's system prompt to avoid
         # re-running the rglob + git status scan for every step
         _system_prompt: str | None = None,
+        _agent_id: str = "main",
+        _agent_type: str = "main",
+        _emit: Callable[[dict], None] | None = None,
     ):
         self.client = anthropic.Anthropic(
             base_url=os.environ.get("ANTHROPIC_BASE_URL"),
@@ -206,6 +225,11 @@ class Agent:
         self.context = ContextManager()
         self.longterm = LongTermMemory(self.cwd)
         self._system_prompt = _system_prompt or _build_system_prompt(self.cwd)
+        self._agent_id = _agent_id
+        self._agent_type = _agent_type
+        self._emit = _emit
+        if self._emit:
+            self._emit({"type": "agent_created", "agentId": _agent_id, "agentType": _agent_type})
 
     def chat(self, user_input: str) -> str:
         self.history.append({"role": "user", "content": user_input})
@@ -213,7 +237,9 @@ class Agent:
 
         system = self._system_prompt + self.longterm.system_addendum + self.context.system_addendum
 
-        for _ in range(_MAX_ITERATIONS):
+        for i in range(_MAX_ITERATIONS):
+            if self._emit:
+                self._emit({"type": "prompt_updated", "agentId": self._agent_id, "prompt": _dump_history(self.history)})
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=8192,
@@ -223,6 +249,7 @@ class Agent:
             )
 
             self.history.append({"role": "assistant", "content": response.content})
+            print(f"  {_DIM}[{self._agent_id}] iter={i+1} stop={response.stop_reason}{_RESET}")
 
             def _extract_text() -> str:
                 texts = [b.text for b in response.content if b.type == "text"]
@@ -265,6 +292,8 @@ class Agent:
         return "Maximum iterations reached without completing the task."
 
     def execute(self, goal: str) -> str:
+        if self._emit:
+            self._emit({"type": "prompt_updated", "agentId": self._agent_id, "prompt": goal})
         skill = SkillLoader().match(goal, self.client, self.model)
         if skill:
             print(f"  [skill] matched: {skill.name}")

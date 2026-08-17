@@ -200,6 +200,9 @@ class PlanExecutor:
                             model=self.agent.model,
                             cwd=self.agent.cwd,
                             _system_prompt=self.agent._system_prompt,
+                            _agent_id=f"step-{step.index + 1}",
+                            _agent_type="sub",
+                            _emit=self.agent._emit,
                         )
                         result = step_agent.chat(context)
                         after = set(self.workspace.rglob("*"))
@@ -286,6 +289,7 @@ class PlanExecutor:
 
     def _build_context(self, plan: Plan, current: Step) -> str:
         parts = [f"Overall goal: {plan.goal}", f"Current step: {current.description}"]
+        parts.append("IMPORTANT: Focus only on this step. Once the step is complete, stop immediately — do not verify unrelated work or explore beyond what this step requires.")
         parts.append(f"Shared workspace directory: {self.workspace} (read/write files here to share results between steps)")
 
         prior_outputs = []
