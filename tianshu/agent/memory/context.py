@@ -1,7 +1,7 @@
 import json
 from typing import Any
 
-_CHARS_PER_TOKEN = 1.5
+_CHARS_PER_TOKEN = 3.5
 
 
 def _estimate_tokens(messages: list[dict]) -> int:
@@ -22,7 +22,7 @@ def _estimate_tokens(messages: list[dict]) -> int:
 class ContextManager:
     def __init__(
         self,
-        max_tokens: int = 80_000,
+        max_tokens: int = 500_000,
         compress_threshold: float = 0.75,
         min_window: int = 4,
     ):
@@ -36,6 +36,16 @@ class ContextManager:
         if self._summary:
             return f"\n\n--- Conversation summary ---\n{self._summary}\n--- End of summary ---"
         return ""
+
+    def stats(self, history: list[dict], system: str = "") -> dict:
+        estimated = _estimate_tokens(history) + int(len(system) / _CHARS_PER_TOKEN)
+        threshold = int(self.max_tokens * self.compress_threshold)
+        return {
+            "historyLen": len(history),
+            "estimatedTokens": estimated,
+            "maxTokens": self.max_tokens,
+            "willCompress": estimated >= threshold,
+        }
 
     def maybe_compress(self, history: list[dict], client: Any, model: str) -> list[dict]:
         estimated = _estimate_tokens(history)
@@ -80,14 +90,18 @@ class ContextManager:
         existing = f"Existing summary:\n{self._summary}\n\n" if self._summary else ""
         prompt = (
             f"{existing}"
-            f"Summarize the following conversation concisely, preserving key information, "
-            f"decisions, and conclusions while removing redundant content:\n\n"
-            f"{conversation_text}"
+            f"Analyze the following conversation and produce two sections:\n\n"
+            f"## Key Facts\n"
+            f"List concrete facts one per line: files created/modified, commands executed and their outcomes, "
+            f"errors encountered, decisions made, pending tasks.\n\n"
+            f"## Summary\n"
+            f"Concise narrative preserving context, decisions, and conclusions.\n\n"
+            f"Conversation:\n{conversation_text}"
         )
 
         response = client.messages.create(
             model=model,
-            max_tokens=512,
+            max_tokens=768,
             messages=[{"role": "user", "content": prompt}],
         )
         return response.content[0].text

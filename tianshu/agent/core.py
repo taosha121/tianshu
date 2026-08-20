@@ -233,13 +233,11 @@ class Agent:
 
     def chat(self, user_input: str) -> str:
         self.history.append({"role": "user", "content": user_input})
-        self.history = self.context.maybe_compress(self.history, self.client, self.model)
-
-        system = self._system_prompt + self.longterm.system_addendum + self.context.system_addendum
 
         for i in range(_MAX_ITERATIONS):
-            if self._emit:
-                self._emit({"type": "prompt_updated", "agentId": self._agent_id, "prompt": _dump_history(self.history)})
+            self.history = self.context.maybe_compress(self.history, self.client, self.model)
+            system = self._system_prompt + self.longterm.system_addendum + self.context.system_addendum
+
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=8192,
@@ -250,6 +248,16 @@ class Agent:
 
             self.history.append({"role": "assistant", "content": response.content})
             print(f"  {_DIM}[{self._agent_id}] iter={i+1} stop={response.stop_reason}{_RESET}")
+
+            _FINAL_STOPS = {"end_turn", "stop_sequence", "max_tokens", "pause_turn", "refusal"}
+            if self._emit:
+                self._emit({
+                    "type": "prompt_updated",
+                    "agentId": self._agent_id,
+                    "prompt": _dump_history(self.history),
+                    "context": self.context.stats(self.history, system),
+                    "isFinal": response.stop_reason in _FINAL_STOPS,
+                })
 
             def _extract_text() -> str:
                 texts = [b.text for b in response.content if b.type == "text"]
@@ -302,7 +310,13 @@ class Agent:
         plan = Planner(self.client, self.model).decompose(goal)
         if plan is None:
             return self.chat(goal)
-        return PlanExecutor(self).execute(plan)
+        steps_summary = PlanExecutor(self).execute(plan)
+        synthesis_prompt = (
+            f"All subtasks have been completed. Here is a summary of what was done:\n\n"
+            f"{steps_summary}\n\n"
+            f"Based on the original goal and the completed work above, provide a comprehensive final response."
+        )
+        return self.chat(synthesis_prompt)
 
     def execute_skill(self, skill) -> str:
         steps = [Step(index=i, description=d) for i, d in enumerate(skill.steps)]

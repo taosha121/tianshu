@@ -191,6 +191,15 @@ class PlanExecutor:
 
                 context = self._build_context(plan, step)
                 before = set(self.workspace.rglob("*"))
+                depends_on_ids = [f"step-{i + 1}" for i in step.depends_on]
+
+                def make_emit(dep_ids: list[str]):
+                    def _emit(event: dict) -> None:
+                        if event.get("type") == "agent_created" and dep_ids:
+                            event = {**event, "dependsOn": dep_ids}
+                        if self.agent._emit:
+                            self.agent._emit(event)
+                    return _emit if self.agent._emit else None
 
                 while step.attempts < _MAX_RETRIES:
                     step.attempts += 1
@@ -202,7 +211,7 @@ class PlanExecutor:
                             _system_prompt=self.agent._system_prompt,
                             _agent_id=f"step-{step.index + 1}",
                             _agent_type="sub",
-                            _emit=self.agent._emit,
+                            _emit=make_emit(depends_on_ids),
                         )
                         result = step_agent.chat(context)
                         after = set(self.workspace.rglob("*"))
