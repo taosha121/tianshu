@@ -38,11 +38,15 @@ Multi-turn conversation in the terminal, running against the current directory.
 ### UI mode
 
 ```bash
+# Terminal 1 — start the backend
 make serve                   # run against the tianshu repo itself
 make serve PROJECT=myproject # run against a sibling directory named myproject
+
+# Terminal 2 — start the frontend
+cd ui && npm run dev
 ```
 
-Starts a FastAPI server on `http://localhost:8000`. Open `ui/static/index.html` in a browser to get the visual canvas — agent graph with dependency links, per-agent context stats, and a chat panel on the left.
+Then open `http://localhost:8080/index.html` in the browser. You get a visual canvas with the agent graph, dependency links, per-agent context stats, and a chat panel.
 
 ## Features
 
