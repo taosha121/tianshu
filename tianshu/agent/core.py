@@ -56,19 +56,19 @@ def _dump_history(history: list) -> list:
 
 
 _TOOL_SCHEMAS = [t.to_api_dict() for t in TOOLS]
-_MAX_ITERATIONS = 30
+_MAX_ITERATIONS = 20
 
 _TOOL_MAX_CHARS: dict[str, int] = {
-    "read_file": 4_000,
-    "bash": 3_000,
-    "grep_files": 2_000,
-    "web_fetch": 5_000,
+    "read_file": 20_000,
+    "bash": 10_000,
+    "grep_files": 8_000,
+    "web_fetch": 15_000,
     "write_file": 500,
     "edit_file": 500,
     "create_directory": 500,
     "save_memory": 500,
 }
-_TOOL_MAX_CHARS_DEFAULT = 8_000
+_TOOL_MAX_CHARS_DEFAULT = 20_000
 
 
 def _truncate_result(tool_name: str, result: str) -> str:
