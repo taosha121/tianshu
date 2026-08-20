@@ -25,11 +25,24 @@ TAVILY_API_KEY=your_tavily_api_key
 AGENT_MODEL=anthropic--claude-4.6-sonnet  # optional, defaults to claude-4.5-sonnet
 ```
 
-Then start the agent:
+## Usage
+
+### CLI mode
 
 ```bash
 make run
 ```
+
+Multi-turn conversation in the terminal, running against the current directory.
+
+### UI mode
+
+```bash
+make serve                   # run against the tianshu repo itself
+make serve PROJECT=myproject # run against a sibling directory named myproject
+```
+
+Starts a FastAPI server on `http://localhost:8000`. Open `ui/static/index.html` in a browser to get the visual canvas — agent graph with dependency links, per-agent context stats, and a chat panel on the left.
 
 ## Features
 
