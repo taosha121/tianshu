@@ -215,6 +215,7 @@ class Agent:
         _agent_id: str = "main",
         _agent_type: str = "main",
         _emit: Callable[[dict], None] | None = None,
+        _max_iterations: int = _MAX_ITERATIONS,
     ):
         self.client = anthropic.Anthropic(
             base_url=os.environ.get("ANTHROPIC_BASE_URL"),
@@ -229,13 +230,15 @@ class Agent:
         self._agent_id = _agent_id
         self._agent_type = _agent_type
         self._emit = _emit
+        self._max_iterations = _max_iterations
         if self._emit:
             self._emit({"type": "agent_created", "agentId": _agent_id, "agentType": _agent_type})
+            self._emit({"type": "agent_started", "agentId": _agent_id})
 
     def chat(self, user_input: str) -> str:
         self.history.append({"role": "user", "content": user_input})
 
-        for i in range(_MAX_ITERATIONS):
+        for i in range(self._max_iterations):
             self.history = self.context.maybe_compress(self.history, self.client, self.model)
             system = self._system_prompt + self.longterm.system_addendum + self.context.system_addendum
 
@@ -313,11 +316,26 @@ class Agent:
         skill = SkillLoader().match(goal, self.client, self.model)
         if skill:
             print(f"  [skill] matched: {skill.name}")
-            return self.execute_skill(skill)
+            result = self.execute_skill(skill)
+        else:
+            plan = Planner(self.client, self.model).decompose(goal)
+            if plan is None:
+                result = self.chat(goal)
+            else:
+                steps_summary = PlanExecutor(self).execute(plan)
+                synthesis_prompt = (
+                    f"All subtasks have been completed. Here is a summary of what was done:\n\n"
+                    f"{steps_summary}\n\n"
+                    f"Based on the original goal and the completed work above, provide a comprehensive final response."
+                )
+                result = self.chat(synthesis_prompt)
+        if self._emit:
+            self._emit({"type": "agent_done", "agentId": self._agent_id, "status": "done"})
+        return result
 
-        plan = Planner(self.client, self.model).decompose(goal)
-        if plan is None:
-            return self.chat(goal)
+    def execute_skill(self, skill) -> str:
+        steps = [Step(index=i, description=d) for i, d in enumerate(skill.steps)]
+        plan = Plan(goal=skill.description, steps=steps)
         steps_summary = PlanExecutor(self).execute(plan)
         synthesis_prompt = (
             f"All subtasks have been completed. Here is a summary of what was done:\n\n"
@@ -325,8 +343,3 @@ class Agent:
             f"Based on the original goal and the completed work above, provide a comprehensive final response."
         )
         return self.chat(synthesis_prompt)
-
-    def execute_skill(self, skill) -> str:
-        steps = [Step(index=i, description=d) for i, d in enumerate(skill.steps)]
-        plan = Plan(goal=skill.description, steps=steps)
-        return PlanExecutor(self).execute(plan)

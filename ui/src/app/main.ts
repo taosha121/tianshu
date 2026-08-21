@@ -61,12 +61,18 @@ sap.ui.define([
                     dataType: sap.galilei.model.dataTypes.gBlob,
                     isCached: false,
                     get() {
+                        const id = (this as any)?.object?.agentId ?? "";
+                        const status = agentStatusMap[id] || "pending";
+                        let f = fill, s = stroke;
+                        if (status === "running") { f = "#FFFDE7"; s = "#F9A825"; }
+                        else if (status === "done") { f = "#E8F5E9"; s = "#388E3C"; }
+                        else if (status === "failed") { f = "#FFEBEE"; s = "#D32F2F"; }
                         return {
                             mainShape: [{
                                 shape: "RoundedRectangle",
                                 r: 8,
-                                fill,
-                                stroke,
+                                fill: f,
+                                stroke: s,
                                 strokeWidth: 2,
                                 width: 160,
                                 height: 60,
@@ -148,6 +154,8 @@ sap.ui.define([
     let diagram: any;
     let agentList: any[] = [];
     let agentContextMap: Record<string, { historyLen: number; estimatedTokens: number; maxTokens: number; willCompress: boolean }> = {};
+    let agentHistoryMap: Record<string, unknown> = {};
+    let agentStatusMap: Record<string, string> = {};
     let symbolMap: Record<string, any> = {};
     let subAgentDepths: Record<string, number> = {};
     let subAgentDepthCounts: Record<number, number> = {};
@@ -224,6 +232,7 @@ sap.ui.define([
     // ── Canvas ops ───────────────────────────────────────────────────────
 
     function addAgent(id: string, type: string, prompt: string, dependsOn?: string[]) {
+        if (agentList.find(a => a.agentId === id)) return;
         const agent = new nsModel.Agent(modelResource, { agentId: id, type, prompt });
         agentModel.agents.push(agent);
         agentList.push(agent);
@@ -253,6 +262,19 @@ sap.ui.define([
         innerEditor?.registerSymbolEvents?.(symbol);
         symbolMap[id] = symbol;
 
+        // Dim sub-agents immediately — they start in pending state (waiting to run)
+        if (type === "sub") {
+            const oViewer = (innerEditor as any)?.viewer;
+            try {
+                if (symbol.shape && oViewer) {
+                    symbol.shape.fill        = "#F3F8FC";
+                    symbol.shape.stroke      = "#A8C8DE";
+                    symbol.shape.strokeWidth = 1;
+                    symbol.shape.updateDrawing(oViewer);
+                }
+            } catch (_) {}
+        }
+
         if (dependsOn?.length) {
             for (const srcId of dependsOn) {
                 const srcSymbol = symbolMap[srcId];
@@ -271,9 +293,69 @@ sap.ui.define([
     function updatePrompt(agentId: string, content: unknown, context?: { historyLen: number; estimatedTokens: number; maxTokens: number; willCompress: boolean }) {
         const agent = agentList.find(a => a.agentId === agentId);
         if (!agent) return;
-        agent.prompt = typeof content === "string" ? content : JSON.stringify(content, null, 2);
+        agentHistoryMap[agentId] = content;
+        agent.prompt = typeof content === "string" ? content : JSON.stringify(content);
         if (context) agentContextMap[agentId] = context;
         if (selectedAgent?.agentId === agentId) renderPanel(selectedAgent);
+    }
+
+    function setAgentStatus(id: string, status: string) {
+        agentStatusMap[id] = status;
+
+        const symbol = symbolMap[id];
+        if (!symbol) return;
+
+        const agent    = agentList.find(a => a.agentId === id);
+        const isMain   = agent?.type === "main";
+        const oViewer  = (innerEditor as any)?.viewer;
+
+        let fill: string, stroke: string;
+        if (status === "running") {
+            fill   = "#FFFDE7";
+            stroke = isMain ? "#E65100" : "#0070F2";
+        } else if (status === "done") {
+            fill = "#F1F8E9"; stroke = "#388E3C";
+        } else if (status === "failed") {
+            fill = "#FFEBEE"; stroke = "#C62828";
+        } else {
+            return;
+        }
+
+        try {
+            if (symbol.shape && oViewer) {
+                symbol.shape.fill   = fill;
+                symbol.shape.stroke = stroke;
+                symbol.shape.updateDrawing(oViewer);
+            }
+        } catch (_) {}
+
+        // Spinner: remove stale, inject new when running
+        const svg = document.querySelector("#canvas svg");
+        if (!svg) return;
+        svg.querySelector(`[data-spinner="${CSS.escape(id)}"]`)?.remove();
+
+        if (status === "running") {
+            for (const text of Array.from(svg.querySelectorAll("text"))) {
+                if (text.textContent?.trim() === id) {
+                    const group = text.closest("g");
+                    if (group) {
+                        const wrap = document.createElementNS("http://www.w3.org/2000/svg", "g");
+                        wrap.setAttribute("data-spinner", id);
+                        wrap.setAttribute("transform", "translate(148,10)");
+                        const arc = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                        arc.setAttribute("r", "6");
+                        arc.setAttribute("fill", "none");
+                        arc.setAttribute("stroke", stroke);
+                        arc.setAttribute("stroke-width", "2");
+                        arc.setAttribute("stroke-dasharray", "24 14");
+                        arc.setAttribute("class", "agent-spinner");
+                        wrap.appendChild(arc);
+                        group.appendChild(wrap);
+                    }
+                    break;
+                }
+            }
+        }
     }
 
     function resetCanvas() {
@@ -281,6 +363,8 @@ sap.ui.define([
         subAgentDepthCounts = {};
         agentList = [];
         agentContextMap = {};
+        agentHistoryMap = {};
+        agentStatusMap = {};
         symbolMap = {};
         agentModel = new nsModel.AgentModel(modelResource, {});
         diagram = new nsUi.AgentDiagram(modelResource, {});
@@ -291,10 +375,109 @@ sap.ui.define([
 
     // ── Property panel ───────────────────────────────────────────────────
 
+    function escHtml(s: string): string {
+        return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    function extractMsgInfo(msg: any): { badge: string; badgeClass: string; preview: string; body: string } {
+        const role: string = msg.role;
+        const content = msg.content;
+
+        if (typeof content === "string") {
+            return {
+                badge: role === "assistant" ? "Assistant" : "User",
+                badgeClass: role === "assistant" ? "assistant" : "user",
+                preview: content.replace(/\n/g, " ").slice(0, 80),
+                body: content,
+            };
+        }
+
+        if (Array.isArray(content)) {
+            const toolResults = content.filter((b: any) => b.type === "tool_result");
+            if (toolResults.length > 0) {
+                const bodyParts = toolResults.map((b: any) => {
+                    const c = typeof b.content === "string" ? b.content : JSON.stringify(b.content, null, 2);
+                    return `[${b.tool_use_id}]\n${c}`;
+                });
+                return {
+                    badge: "Tools",
+                    badgeClass: "tool",
+                    preview: `${toolResults.length} tool result${toolResults.length > 1 ? "s" : ""}`,
+                    body: bodyParts.join("\n\n"),
+                };
+            }
+
+            const texts = content.filter((b: any) => b.type === "text");
+            const toolUse = content.filter((b: any) => b.type === "tool_use");
+
+            let preview = "";
+            if (texts.length > 0) {
+                preview = (texts[0] as any).text.replace(/\n/g, " ").slice(0, 80);
+            } else if (toolUse.length > 0) {
+                preview = `Calls: ${toolUse.map((b: any) => b.name).join(", ")}`;
+            } else {
+                preview = "(empty)";
+            }
+
+            const bodyParts: string[] = [];
+            for (const block of content) {
+                if (block.type === "text") {
+                    bodyParts.push(block.text);
+                } else if (block.type === "tool_use") {
+                    bodyParts.push(`[tool_use: ${block.name}]\n${JSON.stringify(block.input, null, 2)}`);
+                } else {
+                    bodyParts.push(JSON.stringify(block, null, 2));
+                }
+            }
+
+            return {
+                badge: role === "assistant" ? "Assistant" : "User",
+                badgeClass: role === "assistant" ? "assistant" : "user",
+                preview,
+                body: bodyParts.join("\n\n"),
+            };
+        }
+
+        return {
+            badge: role,
+            badgeClass: "tool",
+            preview: "(unknown content)",
+            body: JSON.stringify(content, null, 2),
+        };
+    }
+
+    function renderMessages(content: unknown) {
+        const container = document.getElementById("prop-messages")!;
+        container.innerHTML = "";
+
+        if (!content) return;
+
+        const messages: any[] = Array.isArray(content)
+            ? content
+            : [{ role: "user", content: String(content) }];
+
+        for (const msg of messages) {
+            const { badge, badgeClass, preview, body } = extractMsgInfo(msg);
+            const details = document.createElement("details");
+            details.className = "msg-item";
+
+            const summary = document.createElement("summary");
+            summary.innerHTML =
+                `<span class="msg-badge ${escHtml(badgeClass)}">${escHtml(badge)}</span>` +
+                `<span class="msg-preview">${escHtml(preview)}</span>`;
+
+            const bodyDiv = document.createElement("div");
+            bodyDiv.className = "msg-body";
+            bodyDiv.textContent = body;
+
+            details.appendChild(summary);
+            details.appendChild(bodyDiv);
+            container.appendChild(details);
+        }
+    }
+
     function renderPanel(agent: any) {
-        (document.getElementById("prop-id")     as HTMLElement).textContent = agent.agentId || "";
-        (document.getElementById("prop-type")   as HTMLElement).textContent = agent.type    || "";
-        (document.getElementById("prop-prompt") as HTMLElement).textContent = agent.prompt  || "";
+        (document.getElementById("prop-id")      as HTMLElement).textContent = agent.agentId || "";
 
         const ctx = agentContextMap[agent.agentId];
         const ctxEl = document.getElementById("prop-context") as HTMLElement;
@@ -310,8 +493,14 @@ sap.ui.define([
             ctxEl.textContent = "—";
         }
 
+        renderMessages(agentHistoryMap[agent.agentId]);
+
         (document.getElementById("panel-placeholder") as HTMLElement).style.display = "none";
-        (document.getElementById("panel-props")       as HTMLElement).style.display = "block";
+        const propsEl = document.getElementById("panel-props") as HTMLElement;
+        propsEl.style.display = "flex";
+        propsEl.style.flexDirection = "column";
+        propsEl.style.flex = "1";
+        propsEl.style.overflow = "hidden";
     }
 
     function clearPanel() {
@@ -383,8 +572,12 @@ sap.ui.define([
             es.onmessage = (e: MessageEvent) => {
                 const evt = JSON.parse(e.data);
                 if (evt.type === "agent_created") {
-                    try { addAgent(evt.agentId, evt.agentType, "", evt.dependsOn); } catch (_) {}
+                    try { addAgent(evt.agentId, evt.agentType, "", evt.dependsOn); } catch (e) { console.error("addAgent failed:", e); }
                     appendOutput(`agent ${evt.agentId} created (${evt.agentType})`, "msg-event agent-created");
+                } else if (evt.type === "agent_started") {
+                    setAgentStatus(evt.agentId, "running");
+                } else if (evt.type === "agent_done") {
+                    setAgentStatus(evt.agentId, evt.status === "failed" ? "failed" : "done");
                 } else if (evt.type === "prompt_updated") {
                     updatePrompt(evt.agentId, evt.prompt, evt.context);
                 } else if (evt.type === "result") {
@@ -422,6 +615,17 @@ sap.ui.define([
             addAgent("step-2", "sub", "step 2", ["step-1"]);
             addAgent("step-3", "sub", "step 3", ["step-1"]);
             setTimeout(() => addAgent("step-4", "sub", "step 4", ["step-2", "step-3"]), 100);
+
+            setTimeout(() => setAgentStatus("main-1", "running"), 400);
+            setTimeout(() => setAgentStatus("step-1", "running"), 700);
+            setTimeout(() => setAgentStatus("step-2", "running"), 1000);
+            setTimeout(() => setAgentStatus("step-3", "running"), 1000);
+            setTimeout(() => setAgentStatus("step-1", "done"),    2200);
+            setTimeout(() => setAgentStatus("step-2", "done"),    2800);
+            setTimeout(() => setAgentStatus("step-3", "done"),    3300);
+            setTimeout(() => setAgentStatus("step-4", "running"), 3500);
+            setTimeout(() => setAgentStatus("step-4", "done"),    4800);
+            setTimeout(() => setAgentStatus("main-1", "done"),    5200);
         }, 200);
     });
 

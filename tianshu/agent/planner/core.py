@@ -171,6 +171,18 @@ class PlanExecutor:
                 return f"Duplicate step detected: '{step.description}'. Task aborted."
             seen_descriptions.add(step.description)
 
+        if self.agent._emit:
+            for step in plan.steps:
+                dep_ids = [f"step-{i + 1}" for i in step.depends_on]
+                event: dict = {
+                    "type": "agent_created",
+                    "agentId": f"step-{step.index + 1}",
+                    "agentType": "sub",
+                }
+                if dep_ids:
+                    event["dependsOn"] = dep_ids
+                self.agent._emit(event)
+
         with ThreadPoolExecutor(max_workers=4) as pool:
             futures = {}
 
@@ -212,6 +224,7 @@ class PlanExecutor:
                             _agent_id=f"step-{step.index + 1}",
                             _agent_type="sub",
                             _emit=make_emit(depends_on_ids),
+                            _max_iterations=30,
                         )
                         result = step_agent.chat(context)
                         after = set(self.workspace.rglob("*"))
@@ -223,6 +236,8 @@ class PlanExecutor:
                             print(f"  ✓ [{step.index + 1}] Done: {result[:80]}{'...' if len(result) > 80 else ''}\n")
                             if new_files:
                                 print(f"     Output files: {', '.join(new_files)}\n")
+                        if self.agent._emit:
+                            self.agent._emit({"type": "agent_done", "agentId": f"step-{step.index + 1}", "status": "done"})
                         return
                     except Exception as e:
                         if step.attempts >= _MAX_RETRIES:
@@ -230,6 +245,8 @@ class PlanExecutor:
                                 step.status = StepStatus.FAILED
                                 step.result = str(e)
                                 print(f"  ✗ [{step.index + 1}] Failed ({_MAX_RETRIES} attempts): {e}\n")
+                            if self.agent._emit:
+                                self.agent._emit({"type": "agent_done", "agentId": f"step-{step.index + 1}", "status": "failed"})
                         else:
                             print(f"  [{step.index + 1}] Attempt {step.attempts} failed, retrying: {e}")
 
@@ -311,11 +328,6 @@ class PlanExecutor:
 
     def _final_summary(self, plan: Plan) -> str:
         lines = ["All steps completed.", ""]
-        all_outputs = []
         for s in plan.steps:
-            lines.append(f"Step {s.index + 1}: {s.result[:100]}")
-            all_outputs.extend(s.outputs)
-        if all_outputs:
-            lines.append("\nOutput files:")
-            lines.extend(f"  - {p}" for p in all_outputs)
+            lines.append(f"Step {s.index + 1}: {s.result}")
         return "\n".join(lines)

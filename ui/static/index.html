@@ -168,14 +168,14 @@
       overflow: hidden;
     }
 
+    /* ── Property panel ── */
     #property-panel {
-      flex: 1;
-      min-width: 0;
+      width: 280px;
+      flex-shrink: 0;
       display: flex;
       flex-direction: column;
       border-left: 1px solid #e0e0e0;
       background: #fff;
-      flex-shrink: 0;
       overflow: hidden;
     }
     #panel-header {
@@ -183,6 +183,7 @@
       align-items: center;
       padding: 12px 16px;
       border-bottom: 1px solid #f0f0f0;
+      flex-shrink: 0;
     }
     #panel-title {
       font-size: 13px;
@@ -190,20 +191,35 @@
       color: #1a1a1a;
       flex: 1;
     }
-    #panel-section-title {
-      font-size: 11px;
-      font-weight: 600;
+    #close-panel-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
       color: #999;
-      text-transform: uppercase;
-      letter-spacing: 0.8px;
-      padding: 12px 16px 8px;
+      font-size: 16px;
+      line-height: 1;
+      padding: 0 2px;
     }
-    #panel-body {
-      padding: 0 16px 16px;
+    #close-panel-btn:hover { color: #333; }
+
+    /* fixed top section: ID + Context */
+    #panel-fixed {
+      flex-shrink: 0;
+      padding: 12px 16px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    /* scrollable bottom section: messages */
+    #panel-scroll {
       flex: 1;
       overflow-y: auto;
+      padding: 12px 16px;
     }
-    .prop-row { margin-bottom: 12px; }
+    #panel-scroll::-webkit-scrollbar { width: 4px; }
+    #panel-scroll::-webkit-scrollbar-thumb { background: #ddd; border-radius: 2px; }
+
+    .prop-row { margin-bottom: 10px; }
+    .prop-row:last-child { margin-bottom: 0; }
     .prop-label {
       display: block;
       font-size: 11px;
@@ -222,18 +238,83 @@
       display: block;
       word-break: break-all;
     }
-    #prop-prompt {
-      white-space: pre-wrap;
-      font-family: "SF Mono", "Consolas", "Menlo", monospace;
-      font-size: 12px;
-      line-height: 1.5;
-      min-height: 60px;
-    }
     .prop-placeholder {
       font-size: 12px;
       color: #ccc;
-      padding: 24px 0;
+      padding: 24px 16px;
       text-align: center;
+    }
+
+    /* ── Message accordion ── */
+    .msg-item {
+      border: 1px solid #e8e8e8;
+      border-radius: 4px;
+      margin-bottom: 5px;
+      overflow: hidden;
+    }
+    .msg-item > summary {
+      display: flex;
+      align-items: center;
+      padding: 6px 9px;
+      cursor: pointer;
+      gap: 7px;
+      list-style: none;
+      user-select: none;
+      background: #fafafa;
+    }
+    .msg-item > summary::-webkit-details-marker { display: none; }
+    .msg-item[open] > summary { background: #f0f0f0; }
+    .msg-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 5px;
+      border-radius: 3px;
+      flex-shrink: 0;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+    .msg-badge.user      { background: #dbeafe; color: #1d4ed8; }
+    .msg-badge.assistant { background: #fff3e0; color: #c2410c; }
+    .msg-badge.tool      { background: #f3f4f6; color: #4b5563; }
+    .msg-preview {
+      font-size: 12px;
+      color: #555;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1;
+      min-width: 0;
+    }
+    .msg-body {
+      padding: 8px 10px;
+      border-top: 1px solid #f0f0f0;
+      font-size: 11.5px;
+      font-family: "SF Mono", "Consolas", "Menlo", monospace;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: #333;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .msg-body::-webkit-scrollbar { width: 3px; }
+    .msg-body::-webkit-scrollbar-thumb { background: #ddd; border-radius: 2px; }
+    #prompt-label {
+      font-size: 11px;
+      color: #999;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+      display: block;
+    }
+
+    /* ── Agent spinner (running state) ── */
+    .agent-spinner {
+      transform-origin: 0 0;
+      animation: agent-spin 0.9s linear infinite;
+    }
+    @keyframes agent-spin {
+      to { transform: rotate(360deg); }
     }
   </style>
   <script id="sap-ui-bootstrap"
@@ -269,27 +350,23 @@
       <div id="property-panel">
         <div id="panel-header">
           <span id="panel-title">Properties</span>
+          <button id="close-panel-btn">×</button>
         </div>
-        <div id="panel-section-title">Agent</div>
-        <div id="panel-body">
-          <div id="panel-placeholder" class="prop-placeholder">Select an agent to view properties</div>
-          <div id="panel-props" style="display:none">
+        <div id="panel-placeholder" class="prop-placeholder">Select an agent to view properties</div>
+        <div id="panel-props" style="display:none; flex-direction:column; flex:1; overflow:hidden;">
+          <div id="panel-fixed">
             <div class="prop-row">
               <span class="prop-label">ID</span>
               <span class="prop-value" id="prop-id"></span>
             </div>
             <div class="prop-row">
-              <span class="prop-label">Type</span>
-              <span class="prop-value" id="prop-type"></span>
-            </div>
-            <div class="prop-row">
               <span class="prop-label">Context</span>
               <span class="prop-value" id="prop-context">—</span>
             </div>
-            <div class="prop-row">
-              <span class="prop-label">Prompt</span>
-              <pre class="prop-value" id="prop-prompt"></pre>
-            </div>
+          </div>
+          <div id="panel-scroll">
+            <span id="prompt-label">Prompt</span>
+            <div id="prop-messages"></div>
           </div>
         </div>
       </div>
