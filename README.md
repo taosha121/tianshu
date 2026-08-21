@@ -61,6 +61,10 @@ Then open `http://localhost:8080/index.html` in the browser. You get a visual ca
 
 ![Agent Flow](resources/agent-flow.drawio.svg)
 
+### Single Agent Request Flow
+
+![Agent Request Flow](resources/agent-request-flow.drawio.svg)
+
 ## Project Structure
 
 ```

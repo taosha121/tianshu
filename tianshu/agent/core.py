@@ -57,6 +57,7 @@ def _dump_history(history: list) -> list:
 
 _TOOL_SCHEMAS = [t.to_api_dict() for t in TOOLS]
 _MAX_ITERATIONS = 20
+_FINAL_STOPS = {"end_turn", "stop_sequence", "max_tokens", "pause_turn", "refusal"}
 
 _TOOL_MAX_CHARS: dict[str, int] = {
     "read_file": 20_000,
@@ -249,14 +250,13 @@ class Agent:
             self.history.append({"role": "assistant", "content": response.content})
             print(f"  {_DIM}[{self._agent_id}] iter={i+1} stop={response.stop_reason}{_RESET}")
 
-            _FINAL_STOPS = {"end_turn", "stop_sequence", "max_tokens", "pause_turn", "refusal"}
-            if self._emit:
+            if self._emit and response.stop_reason in _FINAL_STOPS:
                 self._emit({
                     "type": "prompt_updated",
                     "agentId": self._agent_id,
                     "prompt": _dump_history(self.history),
                     "context": self.context.stats(self.history, system),
-                    "isFinal": response.stop_reason in _FINAL_STOPS,
+                    "isFinal": True,
                 })
 
             def _extract_text() -> str:
@@ -296,6 +296,14 @@ class Agent:
                 })
 
             self.history.append({"role": "user", "content": tool_results})
+            if self._emit:
+                self._emit({
+                    "type": "prompt_updated",
+                    "agentId": self._agent_id,
+                    "prompt": _dump_history(self.history),
+                    "context": self.context.stats(self.history, system),
+                    "isFinal": False,
+                })
 
         return "Maximum iterations reached without completing the task."
 
