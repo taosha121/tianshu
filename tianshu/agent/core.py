@@ -59,32 +59,6 @@ _TOOL_SCHEMAS = [t.to_api_dict() for t in TOOLS]
 _MAX_ITERATIONS = 20
 _FINAL_STOPS = {"end_turn", "stop_sequence", "max_tokens", "pause_turn", "refusal"}
 
-_TOOL_MAX_CHARS: dict[str, int] = {
-    "read_file": 20_000,
-    "bash": 10_000,
-    "grep_files": 8_000,
-    "web_fetch": 15_000,
-    "write_file": 500,
-    "edit_file": 500,
-    "create_directory": 500,
-    "save_memory": 500,
-}
-_TOOL_MAX_CHARS_DEFAULT = 20_000
-
-
-def _truncate_result(tool_name: str, result: str) -> str:
-    limit = _TOOL_MAX_CHARS.get(tool_name, _TOOL_MAX_CHARS_DEFAULT)
-    if len(result) <= limit:
-        return result
-    head = int(limit * 0.6)
-    tail = limit - head
-    return (
-        result[:head]
-        + f"\n\n[Truncated {len(result) - limit} characters, head and tail preserved]\n\n"
-        + result[-tail:]
-    )
-
-
 def _build_system_prompt(cwd: str) -> str:
     lines = [
         "You are an expert coding agent. You help users read, write, edit, and reason about code.",
@@ -224,7 +198,7 @@ class Agent:
         self.model = model or os.environ.get("AGENT_MODEL", "anthropic--claude-4.5-sonnet")
         self.cwd = cwd or os.getcwd()
         self.history = []
-        self.context = ContextManager()
+        self.context = ContextManager(cwd=self.cwd)
         self.longterm = LongTermMemory(self.cwd)
         self._system_prompt = _system_prompt or _build_system_prompt(self.cwd)
         self._agent_id = _agent_id
@@ -237,18 +211,34 @@ class Agent:
 
     def chat(self, user_input: str) -> str:
         self.history.append({"role": "user", "content": user_input})
+        _reactive_retries = 0
 
         for i in range(self._max_iterations):
-            self.history = self.context.maybe_compress(self.history, self.client, self.model)
+            self.history = self.context.prepare(
+                self.history, user_input, self.client, self.model)
             system = self._system_prompt + self.longterm.system_addendum + self.context.system_addendum
 
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=8192,
-                system=system,
-                messages=self.history,
-                tools=_TOOL_SCHEMAS,
-            )
+            try:
+                response = self.client.messages.create(
+                    model=self.model,
+                    max_tokens=8192,
+                    system=system,
+                    messages=self.history,
+                    tools=_TOOL_SCHEMAS,
+                )
+                _reactive_retries = 0
+            except Exception as err:
+                _is_too_long = any(
+                    t in str(err).lower()
+                    for t in ("prompt_too_long", "prompt is too long", "too many tokens")
+                )
+                if _is_too_long and _reactive_retries < 1:
+                    print("[reactive compact]")
+                    self.history = self.context.reactive_compact(
+                        self.history, user_input, self.client, self.model)
+                    _reactive_retries += 1
+                    continue
+                raise
 
             self.history.append({"role": "assistant", "content": response.content})
             print(f"  {_DIM}[{self._agent_id}] iter={i+1} stop={response.stop_reason}{_RESET}")
@@ -288,7 +278,6 @@ class Agent:
                     continue
                 tool = TOOL_MAP.get(block.name)
                 result = tool.func(**block.input) if tool else f"Unknown tool: {block.name}"
-                result = _truncate_result(block.name, result)
                 label = getattr(_step_ctx, "label", "")
                 prefix = f"{label} " if label else ""
                 print(f"  {_DIM}{prefix}· {_format_tool_call(block.name, block.input)}{_RESET}")
