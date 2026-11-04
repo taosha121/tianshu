@@ -19,8 +19,8 @@ class ContextManager:
     SNIP_TARGET = 30
 
     def __init__(self, cwd: str = "."):
-        self._transcript_dir = Path(cwd) / ".agent" / "transcripts"
-        self._tool_results_dir = Path(cwd) / ".agent" / "tool-results"
+        self._transcript_dir = Path(cwd) / ".tianshu" / "transcripts"
+        self._tool_results_dir = Path(cwd) / ".tianshu" / "tool-results"
 
     # --- helpers ---
 
@@ -286,6 +286,5 @@ class ContextManager:
             "willCompress": chars >= self.CONTEXT_CHAR_LIMIT,
         }
 
-    @property
-    def system_addendum(self) -> str:
+    def to_system_prompt(self) -> str:
         return ""

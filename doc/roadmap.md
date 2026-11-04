@@ -46,22 +46,39 @@
 
 ---
 
-### 2. 长期记忆（对应 s09）
+### 2. 长期记忆（对应 s09）✅
 
-**现状**：`LongTermMemory` 是一个 `.agent/memory.md` 文件，`append()` 直接把新 note 追加进去，整体以 system addendum 形式注入。
+**完成时间**：2026-11-04
 
-**问题**：
-- 追加式设计导致文件越来越大，没有去重和整理
-- 全量注入 system prompt，文件稍大就浪费 context
-- 没有分类：临时笔记和长期知识混在一起
-- `save_memory` 工具只接受文本，没有引导 agent 以结构化方式写入
-- learn-claude-code s09 设计了三个子系统：**筛选**（判断值不值得记）、**提取**（结构化提取内容）、**整理**（去重合并已有记忆）
+**变更文件**：
+- `tianshu/agent/memory/longterm.py` — 完全重写
+- `tianshu/agent/tools/core.py` — `save_memory` 参数重设计，新增 `delete_memory` / `read_memory`
+- `tianshu/agent/memory/context.py` — 路径 `.agent/` → `.tianshu/`
+- `tianshu/agent/core.py` — skip dirs、`_KEY_ARG` 同步更新
 
-**改进方向**：
-- 引入 memory 类型（fact / decision / preference / error），每类有独立文件
-- 写入时先做"是否值得记"的 LLM 判断，拒绝临时性信息
-- 定期做 consolidation：合并重复记忆，删除过时条目
-- 注入时按相关性召回，而非全量注入
+**实现内容**：
+
+| 方面 | 旧设计 | 新设计 |
+|------|--------|--------|
+| 存储路径 | `<project>/.agent/memory.md` | `~/.tianshu/memory/`（全局）+ `<project>/.tianshu/memory/`（项目级） |
+| 存储结构 | 单文件追加 | `MEMORY.md` 索引 + 每条记忆一个独立文件 |
+| 记忆文件格式 | 纯文本 | frontmatter（name/type/description）+ 正文 |
+| 类型 | 无 | `fact` / `decision` / `preference` / `error`（frontmatter 字段） |
+| 工具 | `save_memory(note)` | `save_memory(slug, type, description, content, scope)` / `delete_memory(slug, scope)` / `read_memory(slug, scope)` |
+| 注入方式 | 全量注入 | 只注入两级 `MEMORY.md` 索引（`[Global]` + `[Project]` 分节）；agent 按需用 `read_memory` 读具体内容 |
+
+**目录约定（`.agent` → `.tianshu`）**：
+
+- 项目级运行时数据：`<project>/.tianshu/tool-results/`、`<project>/.tianshu/transcripts/`
+- 项目级记忆：`<project>/.tianshu/memory/`（项目专属，如"此项目优先用中文"）
+- 全局记忆：`~/.tianshu/memory/`（跨项目，如用户偏好）
+
+对标 Claude Code 的 `.claude/`（项目级）+ `~/.claude/`（用户级）结构。
+
+**暂未实现（留待后续）**：
+- 写入时 LLM 筛选门控（判断是否值得记）
+- 相关性召回（按需加载，需 embedding）
+- Consolidation（定期去重合并，可配合 cron）
 
 ---
 
@@ -77,7 +94,7 @@
 - learn-claude-code s10 的 `TaskRecord` 写磁盘、有 `blockedBy` 字段、支持多 agent 共享任务池
 
 **改进方向**：
-- Plan 序列化到 `.agent/plans/<id>.json`，进程重启后可恢复
+- Plan 序列化到 `.tianshu/plans/<id>.json`，进程重启后可恢复
 - 增加 `blocked` 状态，用于等待后台任务完成
 - Planner 判断逻辑前移到规则层（字数、关键词），只有模糊情况才调 LLM
 
@@ -181,7 +198,7 @@
 
 **应有设计**：
 - `cron_create(schedule, prompt, recurring)` 工具
-- 调度状态持久化到 `.agent/cron.json`
+- 调度状态持久化到 `.tianshu/cron.json`
 - server 进程中有调度线程，按时将 prompt 注入 agent
 
 ---
@@ -209,7 +226,7 @@
 - `MCPClient` 连接外部 MCP server（stdio / SSE / HTTP）
 - 工具发现：启动时从 MCP server 拉取工具列表，合并到 `TOOL_SCHEMAS`
 - 命名空间隔离：外部工具加前缀（如 `mcp_<server>_<tool>`）
-- 配置文件：`.agent/mcp.json` 声明要连接的 MCP server
+- 配置文件：`.tianshu/mcp.json` 声明要连接的 MCP server
 
 ---
 
@@ -253,8 +270,8 @@
 
 | 步骤 | 方法 | 触发条件 | 行为 |
 |------|------|----------|------|
-| 1 | `_tool_result_budget` | 每次 API 调用前，无条件 | 最新一批 tool_result 总量超 100K chars 时，把单个 > 20K 的结果 spill 到 `.agent/tool-results/` |
-| 2 | `_snip_compact` | 每次 API 调用前，无条件 | 消息条数 ≥ 50 时，把中间段归档到 `.agent/transcripts/`，原位替换为归档标记 |
+| 1 | `_tool_result_budget` | 每次 API 调用前，无条件 | 最新一批 tool_result 总量超 100K chars 时，把单个 > 20K 的结果 spill 到 `.tianshu/tool-results/` |
+| 2 | `_snip_compact` | 每次 API 调用前，无条件 | 消息条数 ≥ 50 时，把中间段归档到 `.tianshu/transcripts/`，原位替换为归档标记 |
 | 3 | `_micro_compact` + `_fit_tool_results` | 总 chars > 400K 时 | 把已见的旧 tool_result（保留最近 3 条）替换为磁盘引用；仍超限则对剩余结果压缩到 1K preview |
 | 4 | `_compact_history` | 步骤 3 后仍超限 | LLM 摘要全部历史，替换为一条 summary 消息 |
 
@@ -270,7 +287,7 @@
 |--------|------|------|
 | P0 | Permission 系统 | 安全兜底，没有它 tianshu 在任何真实环境中都是危险的 |
 | P0 | Hooks | Permission 和后续所有扩展点的基础，应先建好再往上加 |
-| P1 | Memory 改造 | 当前设计是技术债，越晚改迁移成本越高 |
+| P1 | ~~Memory 改造~~ | ✅ 已完成（见第二节）|
 | P1 | Plan 持久化 | 长任务稳定性，现在进程崩一次全丢 |
 | P1 | TodoWrite 工具 | 直接影响用户体验，前端已有任务面板可以承接 |
 | P2 | 后台任务 | 解锁长时间命令（测试、构建、安装依赖） |

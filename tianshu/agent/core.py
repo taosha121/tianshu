@@ -30,7 +30,9 @@ _KEY_ARG: dict[str, str] = {
     "list_files":       "path",
     "web_search":       "query",
     "web_fetch":        "url",
-    "save_memory":      "content",
+    "save_memory":      "slug",
+    "delete_memory":    "slug",
+    "read_memory":      "slug",
 }
 
 
@@ -66,12 +68,12 @@ def _build_system_prompt(cwd: str) -> str:
         "Always prefer targeted edits over rewriting entire files. Verify your changes work before reporting completion.",
         "To explore code: use get_outline(path) to see a file's symbols before reading it, and find_symbol(name) to locate definitions.",
         "When browsing the project, skip these directories entirely — they are not source code: "
-        ".venv, venv, node_modules, dist, build, __pycache__, .git, .agent, vendor, site-packages.",
+        ".venv, venv, node_modules, dist, build, __pycache__, .git, .tianshu, vendor, site-packages.",
         "",
         f"Working directory: {cwd}",
     ]
 
-    _SKIP_DIRS = {".venv", "venv", "__pycache__", "dist", "build", "node_modules", ".git", ".agent", "vendor", "site-packages"}
+    _SKIP_DIRS = {".venv", "venv", "__pycache__", "dist", "build", "node_modules", ".git", ".tianshu", "vendor", "site-packages"}
     _MAX_OUTLINE_CHARS = 500
 
     p = Path(cwd)
@@ -216,7 +218,7 @@ class Agent:
         for i in range(self._max_iterations):
             self.history = self.context.prepare(
                 self.history, user_input, self.client, self.model)
-            system = self._system_prompt + self.longterm.system_addendum + self.context.system_addendum
+            system = self._system_prompt + self.longterm.to_system_prompt() + self.context.to_system_prompt()
 
             try:
                 response = self.client.messages.create(

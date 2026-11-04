@@ -208,11 +208,20 @@ def web_fetch(url: str) -> str:
         return f"Fetch failed: {e}"
 
 
-def save_memory(note: str, workspace: str = ".") -> str:
+def save_memory(slug: str, memory_type: str, description: str, content: str,
+                scope: str = "project") -> str:
     from tianshu.agent.memory.longterm import LongTermMemory
-    mem = LongTermMemory(workspace)
-    mem.append(note)
-    return f"Saved to memory: {note}"
+    return LongTermMemory(os.getcwd()).save(slug, memory_type, description, content, scope)
+
+
+def delete_memory(slug: str, scope: str = "project") -> str:
+    from tianshu.agent.memory.longterm import LongTermMemory
+    return LongTermMemory(os.getcwd()).delete(slug, scope)
+
+
+def read_memory(slug: str, scope: str = "project") -> str:
+    from tianshu.agent.memory.longterm import LongTermMemory
+    return LongTermMemory(os.getcwd()).load_entry(slug, scope)
 
 
 TOOLS: list[Tool] = [
@@ -335,16 +344,50 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="save_memory",
-        description="Save important information to long-term memory; it will be loaded automatically on next startup.",
+        description=(
+            "Save important information to long-term memory (persisted across sessions). "
+            "Use scope='global' for cross-project preferences, scope='project' (default) for project-specific facts. "
+            "type must be one of: fact, decision, preference, error. "
+            "slug is a short kebab-case identifier, e.g. 'user-prefers-tabs'."
+        ),
         input_schema={
             "type": "object",
             "properties": {
-                "note": {"type": "string", "description": "Information to remember"},
-                "workspace": {"type": "string", "description": "Workspace directory path; defaults to current directory"},
+                "slug": {"type": "string", "description": "Short kebab-case identifier"},
+                "memory_type": {"type": "string", "enum": ["fact", "decision", "preference", "error"]},
+                "description": {"type": "string", "description": "One-line summary shown in the memory index"},
+                "content": {"type": "string", "description": "Full content of the memory"},
+                "scope": {"type": "string", "enum": ["global", "project"], "description": "global = ~/.tianshu/memory, project = <cwd>/.tianshu/memory; defaults to project"},
             },
-            "required": ["note"],
+            "required": ["slug", "memory_type", "description", "content"],
         },
         func=save_memory,
+    ),
+    Tool(
+        name="delete_memory",
+        description="Delete a memory entry by slug.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "slug": {"type": "string"},
+                "scope": {"type": "string", "enum": ["global", "project"], "description": "Defaults to project"},
+            },
+            "required": ["slug"],
+        },
+        func=delete_memory,
+    ),
+    Tool(
+        name="read_memory",
+        description="Read the full content of a memory entry by slug.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "slug": {"type": "string"},
+                "scope": {"type": "string", "enum": ["global", "project"], "description": "Defaults to project"},
+            },
+            "required": ["slug"],
+        },
+        func=read_memory,
     ),
     Tool(
         name="get_outline",
