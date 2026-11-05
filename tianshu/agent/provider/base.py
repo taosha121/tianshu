@@ -36,3 +36,6 @@ class Provider(ABC):
 
     @abstractmethod
     def summarize(self, client, model: str, messages: list) -> str: ...
+
+    @abstractmethod
+    def complete(self, client, model: str, user_message: str, system: str = "") -> str: ...

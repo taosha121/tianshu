@@ -75,17 +75,13 @@ Goal: {goal}
 
 
 class Planner:
-    def __init__(self, client: Any, model: str):
+    def __init__(self, provider: Any, client: Any, model: str):
+        self.provider = provider
         self.client = client
         self.model = model
 
     def decompose(self, goal: str) -> "Plan | None":
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=1024,
-            messages=[{"role": "user", "content": _PLAN_PROMPT.format(goal=goal)}],
-        )
-        text = response.content[0].text
+        text = self.provider.complete(self.client, self.model, _PLAN_PROMPT.format(goal=goal))
         try:
             start = text.find("{")
             end = text.rfind("}") + 1
@@ -127,7 +123,8 @@ Decide how to continue and return JSON:
 
 
 class Replanner:
-    def __init__(self, client: Any, model: str):
+    def __init__(self, provider: Any, client: Any, model: str):
+        self.provider = provider
         self.client = client
         self.model = model
 
@@ -136,16 +133,11 @@ class Replanner:
         done_text = "\n".join(f"  [{s.index + 1}] {s.description}: {s.result[:100]}" for s in done) or "none"
         failed_text = f"  [{failed_step.index + 1}] {failed_step.description}: {failed_step.result[:200]}"
 
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=1024,
-            messages=[{"role": "user", "content": _REPLAN_PROMPT.format(
-                goal=plan.goal,
-                done_steps=done_text,
-                failed_steps=failed_text,
-            )}],
-        )
-        text = response.content[0].text
+        text = self.provider.complete(self.client, self.model, _REPLAN_PROMPT.format(
+            goal=plan.goal,
+            done_steps=done_text,
+            failed_steps=failed_text,
+        ))
         try:
             start = text.find("{")
             end = text.rfind("}") + 1
@@ -160,7 +152,7 @@ class PlanExecutor:
         self._lock = threading.Lock()
         self.workspace = Path(agent.cwd) / ".agent" / "workspace" / uuid.uuid4().hex[:8]
         self.workspace.mkdir(parents=True, exist_ok=True)
-        self.replanner = Replanner(agent.client, agent.model)
+        self.replanner = Replanner(agent.provider, agent.client, agent.model)
 
     def execute(self, plan: Plan) -> str:
         print(f"\n{plan.summary()}\n")

@@ -88,3 +88,16 @@ class AnthropicProvider(Provider):
         )
         texts = [b.text for b in response.content if getattr(b, "type", None) == "text"]
         return "\n".join(texts).strip() or "(empty summary)"
+
+    def complete(self, client, model: str, user_message: str, system: str = "") -> str:
+        kwargs: dict = {
+            "model": model,
+            "max_tokens": 1024,
+            "messages": [{"role": "user", "content": user_message}],
+        }
+        if system:
+            kwargs["system"] = system
+        response = client.messages.create(**kwargs)
+        return next(
+            (b.text for b in response.content if getattr(b, "type", None) == "text"), ""
+        )

@@ -60,20 +60,15 @@ class SkillLoader:
     def find(self, name: str) -> "Skill | None":
         return next((s for s in self._load() if s.name == name), None)
 
-    def match(self, goal: str, client: Any, model: str) -> "Skill | None":
+    def match(self, goal: str, provider: Any, client: Any, model: str) -> "Skill | None":
         skills = self._load()
         if not skills:
             return None
         skill_list = "\n".join(f"  - {s.name}: {s.description}" for s in skills)
-        response = client.messages.create(
-            model=model,
-            max_tokens=128,
-            messages=[{"role": "user", "content": _MATCH_PROMPT.format(
-                goal=goal,
-                skill_list=skill_list,
-            )}],
-        )
-        text = response.content[0].text
+        text = provider.complete(client, model, _MATCH_PROMPT.format(
+            goal=goal,
+            skill_list=skill_list,
+        ))
         try:
             start = text.find("{")
             end = text.rfind("}") + 1

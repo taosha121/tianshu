@@ -50,7 +50,7 @@ class OpenAIProvider(Provider):
     def create_client(self):
         import openai
         return openai.OpenAI(
-            base_url="http://localhost:6655/openai",
+            base_url="http://localhost:6655/openai/v1",
             # 本地代理两个端点用同一个 key，所以 fallback 到 ANTHROPIC_API_KEY
             api_key=os.environ.get("OPENAI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY", ""),
         )
@@ -71,7 +71,7 @@ class OpenAIProvider(Provider):
     def call(self, client, model, system, messages, tool_schemas) -> ProviderResponse:
         response = client.chat.completions.create(
             model=model,
-            max_tokens=8192,
+            max_completion_tokens=8192,
             messages=_to_api_messages(system, messages),
             tools=tool_schemas,
         )
@@ -115,9 +115,21 @@ class OpenAIProvider(Provider):
                 )},
                 {"role": "user", "content": conversation},
             ],
-            max_tokens=2000,
+            max_completion_tokens=2000,
         )
 
         # OpenAI 的响应结构：choices[0].message.content 直接是字符串
         # 和 Anthropic 不同（Anthropic 是 content blocks 列表，需要遍历取 text）
         return response.choices[0].message.content or "(empty summary)"
+
+    def complete(self, client, model: str, user_message: str, system: str = "") -> str:
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": user_message})
+        response = client.chat.completions.create(
+            model=model,
+            max_completion_tokens=1024,
+            messages=messages,
+        )
+        return response.choices[0].message.content or ""

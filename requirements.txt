@@ -1,3 +1,6 @@
 anthropic
+openai
 httpx
 python-dotenv
+PyYAML
+textual

@@ -263,6 +263,8 @@ class Agent:
             tool_results = []
             for tc in response.tool_calls:
                 tool = TOOL_MAP.get(tc.name)
+                if self._emit:
+                    self._emit({"type": "tool_call", "name": tc.name, "input": tc.input})
                 result = tool.func(**tc.input) if tool else f"Unknown tool: {tc.name}"
                 label = getattr(_step_ctx, "label", "")
                 prefix = f"{label} " if label else ""
@@ -288,12 +290,12 @@ class Agent:
     def execute(self, goal: str) -> str:
         if self._emit:
             self._emit({"type": "prompt_updated", "agentId": self._agent_id, "prompt": goal})
-        skill = SkillLoader().match(goal, self.client, self.model)
+        skill = SkillLoader().match(goal, self.provider, self.client, self.model)
         if skill:
             print(f"  [skill] matched: {skill.name}")
             result = self.execute_skill(skill)
         else:
-            plan = Planner(self.client, self.model).decompose(goal)
+            plan = Planner(self.provider, self.client, self.model).decompose(goal)
             if plan is None:
                 result = self.chat(goal)
             else:
