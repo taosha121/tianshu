@@ -3,11 +3,11 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
-import anthropic
 from dotenv import load_dotenv
 
 from tianshu.agent.memory import ContextManager, LongTermMemory
 from tianshu.agent.planner import Planner, PlanExecutor, Plan, Step
+from tianshu.agent.provider import make_provider
 from tianshu.agent.skills import SkillLoader
 from tianshu.agent.tools import TOOLS, TOOL_MAP
 
@@ -44,20 +44,6 @@ def _format_tool_call(name: str, inp: dict) -> str:
     return f"{name}  {arg}"
 
 
-def _dump_history(history: list) -> list:
-    result = []
-    for msg in history:
-        content = msg["content"]
-        if isinstance(content, list):
-            content = [
-                item.model_dump() if hasattr(item, "model_dump") else item
-                for item in content
-            ]
-        result.append({"role": msg["role"], "content": content})
-    return result
-
-
-_TOOL_SCHEMAS = [t.to_api_dict() for t in TOOLS]
 _MAX_ITERATIONS = 20
 _FINAL_STOPS = {"end_turn", "stop_sequence", "max_tokens", "pause_turn", "refusal"}
 
@@ -193,11 +179,11 @@ class Agent:
         _emit: Callable[[dict], None] | None = None,
         _max_iterations: int = _MAX_ITERATIONS,
     ):
-        self.client = anthropic.Anthropic(
-            base_url=os.environ.get("ANTHROPIC_BASE_URL"),
-            api_key=os.environ["ANTHROPIC_API_KEY"],
-        )
-        self.model = model or os.environ.get("AGENT_MODEL", "anthropic--claude-4.5-sonnet")
+        self.model = model or os.environ.get("AGENT_MODEL", "gpt-5")
+        self.provider = make_provider(self.model)
+        self.client = self.provider.create_client()
+        self._tool_schemas = self.provider.to_tool_schemas(TOOLS)
+        self._summarize_fn = lambda msgs: self.provider.summarize(self.client, self.model, msgs)
         self.cwd = cwd or os.getcwd()
         self.history = []
         self.context = ContextManager(cwd=self.cwd)
@@ -217,17 +203,12 @@ class Agent:
 
         for i in range(self._max_iterations):
             self.history = self.context.prepare(
-                self.history, user_input, self.client, self.model)
+                self.history, user_input, self._summarize_fn)
             system = self._system_prompt + self.longterm.to_system_prompt() + self.context.to_system_prompt()
 
             try:
-                response = self.client.messages.create(
-                    model=self.model,
-                    max_tokens=8192,
-                    system=system,
-                    messages=self.history,
-                    tools=_TOOL_SCHEMAS,
-                )
+                response = self.provider.call(
+                    self.client, self.model, system, self.history, self._tool_schemas)
                 _reactive_retries = 0
             except Exception as err:
                 _is_too_long = any(
@@ -237,55 +218,58 @@ class Agent:
                 if _is_too_long and _reactive_retries < 1:
                     print("[reactive compact]")
                     self.history = self.context.reactive_compact(
-                        self.history, user_input, self.client, self.model)
+                        self.history, user_input, self._summarize_fn)
                     _reactive_retries += 1
                     continue
                 raise
 
-            self.history.append({"role": "assistant", "content": response.content})
+            if response.tool_calls:
+                assistant_msg = {
+                    "role": "assistant",
+                    "content": response.text,
+                    "tool_calls": [
+                        {"id": tc.id, "name": tc.name, "input": tc.input}
+                        for tc in response.tool_calls
+                    ],
+                }
+            else:
+                assistant_msg = {"role": "assistant", "content": response.text}
+            self.history.append(assistant_msg)
             print(f"  {_DIM}[{self._agent_id}] iter={i+1} stop={response.stop_reason}{_RESET}")
 
             if self._emit and response.stop_reason in _FINAL_STOPS:
                 self._emit({
                     "type": "prompt_updated",
                     "agentId": self._agent_id,
-                    "prompt": _dump_history(self.history),
+                    "prompt": self.history,
                     "context": self.context.stats(self.history, system),
                     "isFinal": True,
                 })
 
-            def _extract_text() -> str:
-                texts = [b.text for b in response.content if b.type == "text"]
-                return texts[0] if texts else ""
-
             match response.stop_reason:
                 case "end_turn" | "stop_sequence":
-                    return _extract_text()
+                    return response.text
                 case "max_tokens":
-                    partial = _extract_text()
-                    return partial + "\n[response truncated: max_tokens reached]"
+                    return response.text + "\n[response truncated: max_tokens reached]"
                 case "pause_turn":
-                    return _extract_text() or "[paused]"
+                    return response.text or "[paused]"
                 case "refusal":
                     return "[model refused to respond]"
                 case "tool_use":
                     pass
                 case _:
-                    text = _extract_text()
-                    return text if text else f"[stopped: {response.stop_reason}]"
+                    return response.text if response.text else f"[stopped: {response.stop_reason}]"
 
             tool_results = []
-            for block in response.content:
-                if block.type != "tool_use":
-                    continue
-                tool = TOOL_MAP.get(block.name)
-                result = tool.func(**block.input) if tool else f"Unknown tool: {block.name}"
+            for tc in response.tool_calls:
+                tool = TOOL_MAP.get(tc.name)
+                result = tool.func(**tc.input) if tool else f"Unknown tool: {tc.name}"
                 label = getattr(_step_ctx, "label", "")
                 prefix = f"{label} " if label else ""
-                print(f"  {_DIM}{prefix}· {_format_tool_call(block.name, block.input)}{_RESET}")
+                print(f"  {_DIM}{prefix}· {_format_tool_call(tc.name, tc.input)}{_RESET}")
                 tool_results.append({
                     "type": "tool_result",
-                    "tool_use_id": block.id,
+                    "tool_use_id": tc.id,
                     "content": result,
                 })
 
@@ -294,7 +278,7 @@ class Agent:
                 self._emit({
                     "type": "prompt_updated",
                     "agentId": self._agent_id,
-                    "prompt": _dump_history(self.history),
+                    "prompt": self.history,
                     "context": self.context.stats(self.history, system),
                     "isFinal": False,
                 })
