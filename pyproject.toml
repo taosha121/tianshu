@@ -10,7 +10,8 @@ dependencies = [
     "httpx",
     "python-dotenv",
     "PyYAML",
-    "textual",
+    "fastapi",
+    "uvicorn[standard]",
 ]
 
 [project.scripts]

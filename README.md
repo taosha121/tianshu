@@ -19,12 +19,12 @@ make install
 Create a `.env` file in your project root:
 
 ```bash
-ANTHROPIC_API_KEY=your_api_key
-AGENT_MODEL=claude-sonnet-4-6   # optional; prefix "claude" → Anthropic, otherwise → OpenAI
+OPENAI_API_KEY=your_api_key
+AGENT_MODEL=gpt-5               # optional; defaults to gpt-5; prefix "claude" → Anthropic, otherwise → OpenAI
 TAVILY_API_KEY=your_tavily_key  # optional, for web_search
 ```
 
-The local proxy (`http://localhost:6655`) is used automatically when `AGENT_MODEL` is set — Anthropic endpoint at `/anthropic`, OpenAI-compatible endpoint at `/openai/v1`.
+The local proxy (`http://localhost:6655/openai/v1`) is used as the OpenAI-compatible endpoint. Set `OPENAI_API_KEY` to authenticate.
 
 ## Usage
 
@@ -247,6 +247,6 @@ user input
 
 **What:** unified provider interface supporting Anthropic and OpenAI-compatible backends; replaced web UI + FastAPI server with a native terminal UI (Textual).
 
-**Provider layer:** `Provider` ABC with `call()` / `summarize()` / `complete()`. `make_provider(model)` selects by model name prefix — `"claude-*"` → `AnthropicProvider`, everything else → `OpenAIProvider`. All internal LLM calls (agent loop, planner, skill matcher) go through this interface.
+**Provider layer:** `Provider` ABC with `call()` / `summarize()` / `complete()`. `make_provider(model)` selects by model name prefix — `"claude-*"` → `AnthropicProvider`, everything else → `OpenAIProvider` (default). All internal LLM calls go through this interface; the default model is `gpt-5`.
 
 **TUI:** `TianshuApp` (Textual) replaces the `input()` REPL and the FastAPI + browser UI. The agent runs in a thread worker; tool calls stream into the log panel in real time via the `_emit` callback.

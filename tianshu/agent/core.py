@@ -264,8 +264,10 @@ class Agent:
             for tc in response.tool_calls:
                 tool = TOOL_MAP.get(tc.name)
                 if self._emit:
-                    self._emit({"type": "tool_call", "name": tc.name, "input": tc.input})
+                    self._emit({"type": "tool_call", "id": tc.id, "name": tc.name, "input": tc.input})
                 result = tool.func(**tc.input) if tool else f"Unknown tool: {tc.name}"
+                if self._emit:
+                    self._emit({"type": "tool_result", "id": tc.id, "result": str(result)[:2000]})
                 label = getattr(_step_ctx, "label", "")
                 prefix = f"{label} " if label else ""
                 print(f"  {_DIM}{prefix}· {_format_tool_call(tc.name, tc.input)}{_RESET}")
