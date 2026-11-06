@@ -14,8 +14,14 @@ dependencies = [
     "uvicorn[standard]",
 ]
 
+[project.optional-dependencies]
+dev = ["pytest"]
+
 [project.scripts]
 ts = "tianshu.main:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["tianshu"]
