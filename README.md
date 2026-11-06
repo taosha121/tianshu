@@ -34,13 +34,21 @@ make run
 
 Launches the full-screen TUI. Type a goal and press Enter; Ctrl+C to quit.
 
+To point the agent at a different working directory, pass a path or a name under `projects/`:
+
+```bash
+.venv/bin/ts /path/to/project     # any absolute/relative path
+.venv/bin/ts myproject            # a sibling directory under projects/
+```
+
 Prefix `/skill-name` to invoke a named skill directly, e.g. `/code_review`.
 
 ## Features
 
 - **TUI**: full-screen terminal interface (Textual), keyboard-driven
 - **Chat mode**: multi-turn conversation with full context
-- **Auto plan**: the model decides whether to decompose complex tasks — no manual trigger needed
+- **Self-directed task list**: for a multi-step task the model calls `todo_list_write` to lay out and track its own checklist; the UI renders it live (pending / in-progress / done). Whether to plan at all is the model's decision inside the loop — there is no forced pre-pass that pre-judges every request
+- **Subagent delegation**: the model can call `invoke_subagent` to hand an isolated or independent chunk of work to a fresh subagent — its own context, optional tool allowlist — and get back only the final result, keeping the parent context clean
 - **Skills**: predefined step sequences for common workflows; auto-matched by semantics or triggered manually with `/skill-name`
 - **Tool use**: read/write files, run shell commands, search code, fetch web pages
 - **Long-term memory**: important information persisted across sessions; two scopes — global (`~/.tianshu/memory/`) for cross-project preferences, project-level (`<cwd>/.tianshu/memory/`) for project-specific facts; index injected into system prompt, full content loaded on demand
@@ -75,7 +83,7 @@ tianshu/
     │   └── core.py            # goal decomposition, parallel execution, dynamic replanning
     ├── tools/
     │   ├── __init__.py        # re-exports TOOLS, TOOL_MAP, Tool
-    │   └── core.py            # 14 built-in tools
+    │   └── core.py            # 16 built-in tools
     ├── skills/
     │   ├── __init__.py        # re-exports Skill, SkillLoader
     │   ├── core.py            # Skill dataclass + SkillLoader (load / match / find)
@@ -169,7 +177,7 @@ user input
 **Why:** a useful agent needs three primitives — access to the outside world (tools), multi-step reasoning (ReAct loop), and cross-turn memory (short-term compression + long-term persistence). None of these is optional: without tools the agent can only talk, without a loop it cannot handle complex tasks, without memory every conversation starts from zero.
 
 **Key components:**
-- `tools/core.py`: 14 built-in tools (file I/O, code navigation, bash, web, memory)
+- `tools/core.py`: 16 built-in tools (file I/O, code navigation, bash, web, memory, todo list, subagent)
 - `agent/core.py`: ReAct loop, up to 20 iterations
 - `memory/context.py`: short-term memory — 4-step compression pipeline (spill to disk → archive middle → demote seen results → LLM summary)
 - `memory/longterm.py`: long-term memory — `MEMORY.md` index + per-entry files; global (`~/.tianshu/memory/`) + project (`.tianshu/memory/`) scopes
@@ -279,3 +287,22 @@ PreToolUse hooks → permission.check → tool.func → PostToolUse hooks
 - hook failures and timeouts are caught and degrade to no-op — they never crash the agent loop
 
 Both cover sub-agents automatically: every step routes through the same `_dispatch_tool` and inherits the parent's permission callback and hook registry.
+
+### Phase 7: Self-directed planning — todo list + subagents (complete)
+
+**What:** two model-invoked tools — `todo_list_write` (a self-managed checklist) and `invoke_subagent` (delegate an isolated subtask) — plus removal of the forced per-request planner gate.
+
+**Why:** the old `execute()` sent every request through `Planner.decompose()` first — one blind LLM call, with no execution context, deciding whether to split the task. It over-triggered: trivial requests got decomposed into 3–8 steps and fanned out to parallel subagents, because "splitting" and "spawning subagents" were welded together, so the gate was both expensive and twitchy. The fix follows Claude Code's model: there is no pre-pass. A request goes straight into the `chat` loop, and the model decides — in context, while working — whether to lay out a todo list (near-zero cost, just a checklist) and whether to delegate a chunk to a subagent (high cost, isolated context). The two decisions are now separate tools, so tracking progress no longer drags in the cost of spawning.
+
+**Files:**
+- `tools/core.py`: `todo_list_write(todos)` — full-replace checklist, validated and normalized; `invoke_subagent(goal, tools?)` — placeholder whose real execution lives in the agent runtime
+- `core.py`: `_dispatch_tool` branches for both; `execute()` drops the forced `Planner` path; `Agent` gains `self.todos`, a `_tools` allowlist, and a per-agent `_tool_map`
+- `ui/static/index.html`: live todo panel, grouped per agent (subagent lists indent below the main one), auto-fading once everything is complete
+
+**Behavior:**
+- `todo_list_write` stores the list on the agent and emits `todo_updated` (carrying `agentId` + `agentType`); it returns a short acknowledgement rather than echoing the whole list back into context
+- `invoke_subagent` builds a fresh `Agent` inheriting the parent's provider, cwd, system prompt, hooks, and permission callback, optionally restricted to a tool allowlist; the subagent's exploration stays in its own history and only the final text returns
+- `Plan` / `PlanExecutor` are retained for skills' linear steps (`execute_skill`); ordinary requests no longer force a planner pass
+
+Not yet done: true subagent parallelism (dispatch is sequential), structured subagent results (currently plain text), todo persistence (in-memory, per session).
+

@@ -8,10 +8,10 @@ from dotenv import load_dotenv
 from tianshu.agent.memory import ContextManager, LongTermMemory
 from tianshu.agent.hooks import HookRegistry, load_shell_hooks
 from tianshu.agent.permission import Decision, PermissionEngine
-from tianshu.agent.planner import Planner, PlanExecutor, Plan, Step
+from tianshu.agent.planner import PlanExecutor, Plan, Step
 from tianshu.agent.provider import make_provider
 from tianshu.agent.skills import SkillLoader
-from tianshu.agent.tools import TOOLS, TOOL_MAP
+from tianshu.agent.tools import TOOLS
 
 load_dotenv()
 
@@ -35,6 +35,7 @@ _KEY_ARG: dict[str, str] = {
     "save_memory":      "slug",
     "delete_memory":    "slug",
     "read_memory":      "slug",
+    "invoke_subagent":  "goal",
 }
 
 
@@ -55,6 +56,10 @@ def _build_system_prompt(cwd: str) -> str:
         "You have access to tools for reading/writing files, running shell commands, searching code, and fetching web content.",
         "Always prefer targeted edits over rewriting entire files. Verify your changes work before reporting completion.",
         "To explore code: use get_outline(path) to see a file's symbols before reading it, and find_symbol(name) to locate definitions.",
+        "For a multi-step task, call todo_list_write first to lay out the steps, keep exactly one item in_progress, "
+        "and mark each completed as soon as it's done. Skip it for simple single-step requests.",
+        "Use invoke_subagent only when a subtask would flood your context with noise you don't need to keep, or is "
+        "genuinely independent; for ordinary sequential steps, do the work yourself and track it with todo_list_write.",
         "When browsing the project, skip these directories entirely — they are not source code: "
         ".venv, venv, node_modules, dist, build, __pycache__, .git, .tianshu, vendor, site-packages.",
         "",
@@ -181,15 +186,19 @@ class Agent:
         _emit: Callable[[dict], None] | None = None,
         _permission_cb: Callable[[str, dict, str], bool] | None = None,
         _hooks: HookRegistry | None = None,
+        _tools: list[str] | None = None,
         _max_iterations: int = _MAX_ITERATIONS,
     ):
         self.model = model or os.environ.get("AGENT_MODEL", "gpt-5")
         self.provider = make_provider(self.model)
         self.client = self.provider.create_client()
-        self._tool_schemas = self.provider.to_tool_schemas(TOOLS)
+        selected = [t for t in TOOLS if t.name in _tools] if _tools else TOOLS
+        self._tool_map = {t.name: t for t in selected}
+        self._tool_schemas = self.provider.to_tool_schemas(selected)
         self._summarize_fn = lambda msgs: self.provider.summarize(self.client, self.model, msgs)
         self.cwd = cwd or os.getcwd()
         self.history = []
+        self.todos: list[dict] = []
         self.context = ContextManager(cwd=self.cwd)
         self.longterm = LongTermMemory(self.cwd)
         self.permission = PermissionEngine()
@@ -274,7 +283,7 @@ class Agent:
 
             tool_results = []
             for tc in response.tool_calls:
-                tool = TOOL_MAP.get(tc.name)
+                tool = self._tool_map.get(tc.name)
                 if self._emit:
                     self._emit({"type": "tool_call", "id": tc.id, "name": tc.name, "input": tc.input})
 
@@ -323,11 +332,43 @@ class Agent:
 
         if tool is None:
             result = f"Unknown tool: {name}"
+        elif name == "todo_list_write":
+            self.todos = tool.func(**inp)
+            if self._emit:
+                self._emit({"type": "todo_updated", "agentId": self._agent_id,
+                            "agentType": self._agent_type, "todos": self.todos})
+            counts = {"pending": 0, "in_progress": 0, "completed": 0}
+            for t in self.todos:
+                counts[t["status"]] += 1
+            result = (f"Todos updated: {counts['completed']} completed, "
+                      f"{counts['in_progress']} in_progress, {counts['pending']} pending")
+        elif name == "invoke_subagent":
+            result = self._run_subagent(**inp)
         else:
             result = tool.func(**inp)
 
         # PostToolUse hooks: may rewrite the result or trigger side effects.
         return self.hooks.run_post(name, inp, result)
+
+    def _run_subagent(self, goal: str, tools: list | None = None) -> str:
+        import uuid
+        sub_id = f"sub-{uuid.uuid4().hex[:6]}"
+        sub = Agent(
+            model=self.model,
+            cwd=self.cwd,
+            _system_prompt=self._system_prompt,
+            _agent_id=sub_id,
+            _agent_type="sub",
+            _emit=self._emit,
+            _permission_cb=self._permission_cb,
+            _hooks=self.hooks,
+            _tools=tools,
+            _max_iterations=30,
+        )
+        result = sub.chat(goal)
+        if self._emit:
+            self._emit({"type": "agent_done", "agentId": sub_id, "status": "done"})
+        return result
 
     def execute(self, goal: str) -> str:
         if self._emit:
@@ -337,17 +378,7 @@ class Agent:
             print(f"  [skill] matched: {skill.name}")
             result = self.execute_skill(skill)
         else:
-            plan = Planner(self.provider, self.client, self.model).decompose(goal)
-            if plan is None:
-                result = self.chat(goal)
-            else:
-                steps_summary = PlanExecutor(self).execute(plan)
-                synthesis_prompt = (
-                    f"All subtasks have been completed. Here is a summary of what was done:\n\n"
-                    f"{steps_summary}\n\n"
-                    f"Based on the original goal and the completed work above, provide a comprehensive final response."
-                )
-                result = self.chat(synthesis_prompt)
+            result = self.chat(goal)
         if self._emit:
             self._emit({"type": "agent_done", "agentId": self._agent_id, "status": "done"})
         return result

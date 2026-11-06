@@ -224,6 +224,29 @@ def read_memory(slug: str, scope: str = "project") -> str:
     return LongTermMemory(os.getcwd()).load_entry(slug, scope)
 
 
+_TODO_STATUSES = {"pending", "in_progress", "completed"}
+
+
+def todo_list_write(todos: list) -> list:
+    # Pure validation/normalization; the agent runtime stores the result and
+    # emits the UI event (it needs the agent instance, which a tool func lacks).
+    normalized = []
+    for t in todos or []:
+        content = str(t.get("content", "")).strip()
+        status = t.get("status", "pending")
+        if status not in _TODO_STATUSES:
+            status = "pending"
+        if content:
+            normalized.append({"content": content, "status": status})
+    return normalized
+
+
+def invoke_subagent(goal: str, tools: list | None = None) -> str:
+    # Placeholder: real execution happens in Agent._dispatch_tool, which owns
+    # the parent agent (provider, cwd, hooks, permission, emit) a func can't see.
+    return "invoke_subagent must be handled by the agent runtime"
+
+
 TOOLS: list[Tool] = [
     Tool(
         name="read_file",
@@ -413,6 +436,58 @@ TOOLS: list[Tool] = [
             "required": ["name"],
         },
         func=find_symbol,
+    ),
+    Tool(
+        name="todo_list_write",
+        description=(
+            "Write or update your task list for a multi-step task. Pass the FULL list every time — "
+            "it replaces the previous list entirely. Use this to plan complex work and keep the user "
+            "informed of progress: add items when you start, flip one to in_progress as you work on it, "
+            "and mark it completed the moment it's done. Keep exactly one item in_progress at a time. "
+            "Skip this for simple single-step requests — just answer directly."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "todos": {
+                    "type": "array",
+                    "description": "The complete task list, in order",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "content": {"type": "string", "description": "What the task is"},
+                            "status": {"type": "string", "enum": ["pending", "in_progress", "completed"]},
+                        },
+                        "required": ["content", "status"],
+                    },
+                },
+            },
+            "required": ["todos"],
+        },
+        func=todo_list_write,
+    ),
+    Tool(
+        name="invoke_subagent",
+        description=(
+            "Delegate a self-contained subtask to a fresh subagent that runs in its own isolated "
+            "context and returns only its final answer. Use this ONLY when a chunk of work would flood "
+            "your own context with noise you don't need to keep (e.g. searching across many files for a "
+            "single answer), or when a task is genuinely independent. For ordinary sequential steps, do "
+            "NOT use this — just do the work yourself and track it with todo_list_write."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "goal": {"type": "string", "description": "A clear, self-contained description of the subtask and what to return"},
+                "tools": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional allowlist of tool names the subagent may use; omit to allow all tools",
+                },
+            },
+            "required": ["goal"],
+        },
+        func=invoke_subagent,
     ),
 ]
 

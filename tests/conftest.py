@@ -49,14 +49,17 @@ def build_agent(provider, cwd, *, max_iterations=20, permission_cb=None, hooks=N
     from tianshu.agent.hooks import HookRegistry
     from tianshu.agent.memory import ContextManager, LongTermMemory
     from tianshu.agent.permission import PermissionEngine
+    from tianshu.agent.tools import TOOLS
 
     agent = Agent.__new__(Agent)
     agent.provider = provider
     agent.client = None
     agent.model = "fake"
     agent._tool_schemas = []
+    agent._tool_map = {t.name: t for t in TOOLS}
     agent.cwd = str(cwd)
     agent.history = []
+    agent.todos = []
     agent.context = ContextManager(cwd=str(cwd))
     agent.longterm = LongTermMemory(str(cwd))
     agent.permission = PermissionEngine()

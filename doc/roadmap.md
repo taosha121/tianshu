@@ -98,6 +98,8 @@
 - 增加 `blocked` 状态，用于等待后台任务完成
 - Planner 判断逻辑前移到规则层（字数、关键词），只有模糊情况才调 LLM
 
+> 更新（2026-11-06）：第八节的「方案 C」已直接废除每请求盲判的前置 Planner——日常请求默认进 `chat` loop，拆分改由模型自主用 `todo_list_write` / `invoke_subagent` 决定。Planner/PlanExecutor 现仅服务 skill 的线性步骤。
+
 ---
 
 ### 4. Subagent（对应 s06）
@@ -114,6 +116,8 @@
 - 提供独立的 `spawn_subagent(goal, tools=None)` 工具，让 agent 在 chat 中主动召唤子 agent
 - subagent 返回结构化结果（JSON schema），而非纯文本
 - 支持为 subagent 指定工具白名单
+
+> 更新（2026-11-06）：第八节已落地 `invoke_subagent(goal, tools?)`——agent 可在 chat 中主动召唤独立上下文的子 agent，并支持工具白名单（上面第 1、3 条）。结构化返回（第 2 条）仍为纯文本，留待后续。
 
 ---
 
@@ -203,17 +207,33 @@ PreToolUse hooks → permission.check → tool.func → PostToolUse hooks
 
 ---
 
-### 8. TodoWrite 工具（对应 s05）
+### 8. TodoWrite 工具（对应 s05）✅
 
-**描述**：agent 在开始复杂任务时，先用 `todo_write` 工具写下任务列表，执行过程中随时更新状态，给用户可见的进度。
+**完成时间**：2026-11-06
 
-**现状**：tianshu 有 `Plan` / `Step`，但这是 planner 自动生成的，agent 自己无法主动管理 todo list；也没有暴露给用户的可视化进度。
+**变更文件**：
+- `tianshu/agent/tools/core.py` — 新增 `todo_list_write`、`invoke_subagent` 两个工具
+- `tianshu/agent/core.py` — `_dispatch_tool` 加两个分支；`execute()` 去掉前置强制 Planner；Agent 加 `self.todos`、`_tools` 工具白名单、per-agent `_tool_map`；系统提示加引导
+- `ui/static/index.html` — todo 面板（按 agent 分组、全部完成后淡出）
+- `tests/conftest.py` — 测试桩补 `_tool_map` / `todos`
 
-**应有设计**：
-- 新增 `todo_write(todos: list)` 工具，agent 可主动调用
-- todo 状态：pending / in_progress / completed
-- 每次 todo 变化 emit 事件，前端实时显示任务列表
-- 与 Plan 系统的关系：Plan 是 planner 自动拆分的，TodoWrite 是 agent 自己决策的，两者并行存在
+**实现内容**：采用「方案 C」——废掉前置强制 Planner，拆分权交还主模型。
+
+| 方面 | 实现 |
+|------|------|
+| `todo_list_write(todos)` | 全量覆盖写待办（pending / in_progress / completed）；纯校验归一化；存 `self.todos` 后 emit `todo_updated`（带 `agentId` + `agentType`），只回一句简短 ack 省 context |
+| `invoke_subagent(goal, tools?)` | 委派隔离子任务：当场新建子 Agent，继承父 `provider`/`cwd`/`_system_prompt`/`hooks`/`permission_cb`/`emit`，支持 `tools` 工具白名单；子 agent 的探索噪音留在它自己 history，只回传最终文本 |
+| 拆分触发 | `execute()` 不再对每个请求盲判 `needs_plan`，默认直接进 `chat` loop。要不要列清单、要不要起子 agent，由模型在 loop 里按工具 description 自主决定 |
+| 前端 | 主 agent 清单常驻、子 agent 清单缩进显示、子 agent `agent_done` 后移除其清单；全部 completed 停留 2.5s 后淡出 |
+
+**与 Plan 系统的关系**：Plan/PlanExecutor 保留给 skill 的线性步骤用（`execute_skill`）；日常请求不再强制走 Planner。TodoWrite 是模型自管清单（零成本），invoke_subagent 才是真正起子 agent（高成本），两者分别对应「记进度」和「隔离/并行」两种不同决策。
+
+**暂未实现（留待后续）**：
+- 子 agent 真并行（当前为顺序 dispatch，连开多个也串行）
+- 子 agent 结构化返回（当前为纯文本）
+- todo 落盘（纯内存，跟会话走）
+- 前端把子 agent 的 `tool_call` 流按 agentId 区分（事件暂未带 agentId）
+
 
 ---
 
@@ -329,7 +349,7 @@ PreToolUse hooks → permission.check → tool.func → PostToolUse hooks
 | P0 | ~~Hooks~~ | ✅ 已完成（见第七节）|
 | P1 | ~~Memory 改造~~ | ✅ 已完成（见第二节）|
 | P1 | Plan 持久化 | 长任务稳定性，现在进程崩一次全丢 |
-| P1 | TodoWrite 工具 | 直接影响用户体验，前端已有任务面板可以承接 |
+| P1 | ~~TodoWrite 工具~~ | ✅ 已完成（见第八节，含 invoke_subagent + 废除前置 Planner）|
 | P2 | 后台任务 | 解锁长时间命令（测试、构建、安装依赖） |
 | P2 | ~~Context Compact 改进~~ | ✅ 已完成（O1）|
 | P3 | Cron 调度器 | 独立特性，不阻塞其他开发 |

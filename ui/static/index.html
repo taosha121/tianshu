@@ -109,6 +109,44 @@
       50%       { opacity: .4; }
     }
 
+    /* ── Todo panel ── */
+    #todo-panel {
+      flex-shrink: 0;
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+      margin: 12px max(24px, calc(50% - 380px)) 0;
+      padding: 12px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      transition: opacity .5s;
+    }
+    #todo-panel.visible { display: flex; }
+    #todo-panel.fading  { opacity: 0; }
+    .todo-group { display: flex; flex-direction: column; gap: 6px; }
+    .todo-group.sub {
+      margin-left: 6px;
+      padding-left: 12px;
+      border-left: 2px solid var(--border);
+    }
+    .todo-group + .todo-group { margin-top: 10px; }
+    #todo-panel .todo-head {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      color: var(--text-3);
+    }
+    .todo-item { display: flex; align-items: baseline; gap: 8px; line-height: 1.5; }
+    .todo-item .mark { flex-shrink: 0; width: 14px; text-align: center; }
+    .todo-item .txt { color: var(--text-2); word-break: break-word; }
+    .todo-item.pending     .mark { color: var(--text-3); }
+    .todo-item.in_progress .mark { color: var(--blue); }
+    .todo-item.in_progress .txt  { color: var(--text); font-weight: 600; }
+    .todo-item.completed   .mark { color: var(--green); }
+    .todo-item.completed   .txt  { color: var(--text-3); text-decoration: line-through; }
+
     /* ── Chat area ── */
     #chat {
       flex: 1;
@@ -397,6 +435,9 @@
   <div id="status-dot" title="idle"></div>
 </div>
 
+<!-- Todo panel -->
+<div id="todo-panel"></div>
+
 <!-- Chat -->
 <div id="chat"></div>
 
@@ -427,6 +468,7 @@
   const ctxWrap = document.getElementById("ctx-wrap");
   const ctxFill = document.getElementById("ctx-bar-fill");
   const ctxPct  = document.getElementById("ctx-pct");
+  const todoPanel = document.getElementById("todo-panel");
 
   let sessionId  = null;
   let activeEs   = null;
@@ -529,6 +571,68 @@
       .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
 
+  // ── Todo panel ───────────────────────────────────────────────────────
+  const TODO_MARKS = { pending: "○", in_progress: "◐", completed: "●" };
+  // agentId -> { type, todos }. Main agent and each subagent keep separate lists.
+  const todosByAgent = {};
+  let todoFadeTimer = null;
+
+  function renderTodos(agentId, agentType, todos) {
+    if (!todos || !todos.length) delete todosByAgent[agentId];
+    else todosByAgent[agentId] = { type: agentType || "main", todos };
+    drawTodoPanel();
+  }
+
+  function removeAgentTodos(agentId) {
+    if (todosByAgent[agentId]) { delete todosByAgent[agentId]; drawTodoPanel(); }
+  }
+
+  function groupHtml(agentId, entry) {
+    const isSub = agentId !== "main";
+    const done = entry.todos.filter(t => t.status === "completed").length;
+    const label = (isSub ? "Subagent" : "Tasks") + ` · ${done}/${entry.todos.length}`;
+    let html = `<div class="todo-group${isSub ? " sub" : ""}">`
+             + `<div class="todo-head">${label}</div>`;
+    for (const t of entry.todos) {
+      const st = t.status || "pending";
+      html += `<div class="todo-item ${st}">`
+            + `<span class="mark">${TODO_MARKS[st] || "○"}</span>`
+            + `<span class="txt">${esc(t.content || "")}</span></div>`;
+    }
+    return html + "</div>";
+  }
+
+  function drawTodoPanel() {
+    clearTimeout(todoFadeTimer); todoFadeTimer = null;
+    const ids = Object.keys(todosByAgent);
+    if (!ids.length) {
+      todoPanel.classList.remove("visible", "fading");
+      todoPanel.innerHTML = "";
+      return;
+    }
+    // Main agent first, subagents (still running) below it.
+    ids.sort((a, b) => (a === "main" ? -1 : b === "main" ? 1 : 0));
+    let allDone = true;
+    let html = "";
+    for (const id of ids) {
+      const entry = todosByAgent[id];
+      if (entry.todos.some(t => t.status !== "completed")) allDone = false;
+      html += groupHtml(id, entry);
+    }
+    todoPanel.innerHTML = html;
+    todoPanel.classList.remove("fading");
+    todoPanel.classList.add("visible");
+    // Once everything is done, let it linger briefly, then fade out.
+    if (allDone) {
+      todoFadeTimer = setTimeout(() => {
+        todoPanel.classList.add("fading");
+        todoFadeTimer = setTimeout(() => {
+          todoPanel.classList.remove("visible", "fading");
+        }, 550);
+      }, 2500);
+    }
+  }
+
   // ── Context bar ──────────────────────────────────────────────────────
   function updateCtx(ctx) {
     if (!ctx) return;
@@ -594,6 +698,12 @@
 
       } else if (evt.type === "prompt_updated" && evt.context) {
         updateCtx(evt.context);
+
+      } else if (evt.type === "todo_updated") {
+        renderTodos(evt.agentId, evt.agentType, evt.todos);
+
+      } else if (evt.type === "agent_done") {
+        if (evt.agentId && evt.agentId !== "main") removeAgentTodos(evt.agentId);
 
       } else if (evt.type === "permission_request") {
         showPermission(evt.requestId, evt.tool, evt.input, evt.reason);
