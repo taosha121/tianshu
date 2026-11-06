@@ -14,15 +14,21 @@ class Skill:
 _BUILTIN_DIR = Path(__file__).parent / "builtin"
 
 _MATCH_PROMPT = """\
-You are a skill router. Determine whether the user's goal closely matches one of the predefined skills below.
+You are a skill router. Each skill below is a specific predefined workflow, not a general topic.
+Your default answer is null. Only return a skill when the user is clearly asking to run that exact workflow.
 
 User goal: {goal}
 
 Available skills:
 {skill_list}
 
-If the user's goal closely matches a skill (80%+ semantic similarity), return that skill's name.
-If there is no match, return null.
+Rules:
+- Match only if the goal explicitly requests the skill's specific action on its specific object.
+  Both the action and the object must match, not just the general theme.
+- Casual verbs like "look at", "check", "show me", "explain", "understand" are NOT a request
+  to run a skill. "Look at the project structure" is exploration, not a code review.
+- When uncertain, return null. A wrong match is worse than no match.
+
 Return JSON only, format: {{"match": "skill_name"}} or {{"match": null}}
 """
 

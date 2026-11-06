@@ -1,5 +1,5 @@
 name: code_review
-description: Review recent changes and identify issues and improvement suggestions
+description: Review the git diff of recent commits for bugs and improvements. Triggers only when the user explicitly asks to review changes or a diff, not when they just want to look at or understand code.
 steps:
   - Use git diff HEAD~1 to get the changes from the most recent commit
   - Review each file for correctness, edge cases, security, and readability
