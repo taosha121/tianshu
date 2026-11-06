@@ -130,27 +130,3 @@ async def respond_permission(request_id: str, body: PermissionResponse):
 
 _STATIC_DIR = Path(__file__).parent.parent / "ui" / "static"
 app.mount("/", StaticFiles(directory=str(_STATIC_DIR), html=True), name="static")
-
-
-def serve():
-    import argparse
-    import uvicorn
-
-    global _SERVER_CWD
-    parser = argparse.ArgumentParser(description="tianshu web server")
-    parser.add_argument("project", nargs="?", default=None)
-    args = parser.parse_args()
-
-    if args.project:
-        base = Path(__file__).parents[2]
-        candidate = base / args.project
-        if candidate.is_dir():
-            _SERVER_CWD = str(candidate)
-        else:
-            for d in base.iterdir():
-                if d.is_dir() and d.name.lower() == args.project.lower():
-                    _SERVER_CWD = str(d)
-                    break
-
-    print(f"[tianshu] cwd: {_SERVER_CWD}")
-    uvicorn.run(app, host="127.0.0.1", port=8000, reload=False)
