@@ -94,11 +94,12 @@
 - learn-claude-code s10 的 `TaskRecord` 写磁盘、有 `blockedBy` 字段、支持多 agent 共享任务池
 
 **改进方向**：
-- Plan 序列化到 `.tianshu/plans/<id>.json`，进程重启后可恢复
 - 增加 `blocked` 状态，用于等待后台任务完成
 - Planner 判断逻辑前移到规则层（字数、关键词），只有模糊情况才调 LLM
 
 > 更新（2026-11-06）：第八节的「方案 C」已直接废除每请求盲判的前置 Planner——日常请求默认进 `chat` loop，拆分改由模型自主用 `todo_list_write` / `invoke_subagent` 决定。Planner/PlanExecutor 现仅服务 skill 的线性步骤。
+
+> 更新（2026-11-06）：**Plan 持久化已废弃，不做**。Plan 现只剩 `execute_skill` 一个入口，是「开始即跑完」的单次同步结构，没有跨 turn/session 的驻留状态，也没有中间 step 续跑逻辑，序列化到磁盘无人读取。崩溃恢复真正该关注的进度载体是 `self.todos`（纯内存），而非 Plan；真正的长任务可续跑归第 13 节 Workflow Runtime（journal + 断点续跑），不在此处补。
 
 ---
 
@@ -348,7 +349,7 @@ PreToolUse hooks → permission.check → tool.func → PostToolUse hooks
 | P0 | ~~Permission 系统~~ | ✅ 已完成（见第六节）|
 | P0 | ~~Hooks~~ | ✅ 已完成（见第七节）|
 | P1 | ~~Memory 改造~~ | ✅ 已完成（见第二节）|
-| P1 | Plan 持久化 | 长任务稳定性，现在进程崩一次全丢 |
+| ~~P1~~ | ~~Plan 持久化~~ | ❌ 已废弃：Plan 退化为 skill 专用的单次同步结构，持久化前提不成立（见第三节） |
 | P1 | ~~TodoWrite 工具~~ | ✅ 已完成（见第八节，含 invoke_subagent + 废除前置 Planner）|
 | P2 | 后台任务 | 解锁长时间命令（测试、构建、安装依赖） |
 | P2 | ~~Context Compact 改进~~ | ✅ 已完成（O1）|
