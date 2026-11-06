@@ -216,6 +216,7 @@ class PlanExecutor:
                             _agent_id=f"step-{step.index + 1}",
                             _agent_type="sub",
                             _emit=make_emit(depends_on_ids),
+                            _permission_cb=self.agent._permission_cb,
                             _max_iterations=30,
                         )
                         result = step_agent.chat(context)

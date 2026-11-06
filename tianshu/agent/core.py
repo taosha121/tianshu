@@ -6,6 +6,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from tianshu.agent.memory import ContextManager, LongTermMemory
+from tianshu.agent.permission import Decision, PermissionEngine
 from tianshu.agent.planner import Planner, PlanExecutor, Plan, Step
 from tianshu.agent.provider import make_provider
 from tianshu.agent.skills import SkillLoader
@@ -177,6 +178,7 @@ class Agent:
         _agent_id: str = "main",
         _agent_type: str = "main",
         _emit: Callable[[dict], None] | None = None,
+        _permission_cb: Callable[[str, dict, str], bool] | None = None,
         _max_iterations: int = _MAX_ITERATIONS,
     ):
         self.model = model or os.environ.get("AGENT_MODEL", "gpt-5")
@@ -188,10 +190,12 @@ class Agent:
         self.history = []
         self.context = ContextManager(cwd=self.cwd)
         self.longterm = LongTermMemory(self.cwd)
+        self.permission = PermissionEngine()
         self._system_prompt = _system_prompt or _build_system_prompt(self.cwd)
         self._agent_id = _agent_id
         self._agent_type = _agent_type
         self._emit = _emit
+        self._permission_cb = _permission_cb
         self._max_iterations = _max_iterations
         if self._emit:
             self._emit({"type": "agent_created", "agentId": _agent_id, "agentType": _agent_type})
@@ -265,7 +269,8 @@ class Agent:
                 tool = TOOL_MAP.get(tc.name)
                 if self._emit:
                     self._emit({"type": "tool_call", "id": tc.id, "name": tc.name, "input": tc.input})
-                result = tool.func(**tc.input) if tool else f"Unknown tool: {tc.name}"
+
+                result = self._dispatch_tool(tc.name, tc.input, tool)
                 if self._emit:
                     self._emit({"type": "tool_result", "id": tc.id, "result": str(result)[:2000]})
                 label = getattr(_step_ctx, "label", "")
@@ -288,6 +293,24 @@ class Agent:
                 })
 
         return "Maximum iterations reached without completing the task."
+
+    def _dispatch_tool(self, name: str, inp: dict, tool) -> str:
+        decision, reason = self.permission.check(name, inp)
+
+        if decision is Decision.DENY:
+            return f"[Permission denied] Blocked by policy ({reason or name}). Do not retry; explain to the user why."
+
+        if decision is Decision.ASK:
+            # No callback (headless / subprocess with no UI): allow by default.
+            # With a callback, block until the user decides.
+            allowed = self._permission_cb(name, inp, reason) if self._permission_cb else True
+            if not allowed:
+                return (f"[Permission denied by user] The user declined to run {name}. "
+                        f"Do not retry; ask how they would like to proceed.")
+
+        if tool is None:
+            return f"Unknown tool: {name}"
+        return tool.func(**inp)
 
     def execute(self, goal: str) -> str:
         if self._emit:

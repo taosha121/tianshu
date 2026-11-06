@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>天枢</title>
+  <title>Tianshu</title>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -41,20 +41,30 @@
 
     /* ── Header ── */
     #header {
-      height: 48px;
+      height: 60px;
       flex-shrink: 0;
       display: flex;
       align-items: center;
-      gap: 10px;
-      padding: 0 20px;
+      gap: 12px;
+      padding: 0 24px;
       background: var(--surface);
       border-bottom: 1px solid var(--border);
     }
+    #logo { display: flex; align-items: center; gap: 11px; }
+    #logo-mark {
+      width: 36px; height: 36px;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      color: #fff;
+      background: linear-gradient(135deg, #0070f2 0%, #4aa3ff 100%);
+      box-shadow: 0 2px 10px rgba(0,112,242,.35);
+    }
+    #logo-mark svg { fill: currentColor; }
     #header-title {
-      font-size: 16px;
+      font-size: 21px;
       font-weight: 700;
       color: var(--text);
-      letter-spacing: 0.5px;
+      letter-spacing: .3px;
     }
     #header-sep { color: var(--border); font-size: 18px; }
     #header-project { font-size: 12px; color: var(--text-2); }
@@ -368,7 +378,14 @@
 
 <!-- Header -->
 <div id="header">
-  <span id="header-title">天枢</span>
+  <div id="logo">
+    <span id="logo-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="23" height="23">
+        <path d="M12 1.8 L15.1 8.9 L22.2 12 L15.1 15.1 L12 22.2 L8.9 15.1 L1.8 12 L8.9 8.9 Z"/>
+      </svg>
+    </span>
+    <span id="header-title">Tianshu</span>
+  </div>
   <span id="header-sep">·</span>
   <span id="header-project">—</span>
   <div class="spacer"></div>
@@ -385,18 +402,18 @@
 
 <!-- Input -->
 <div id="input-wrap">
-  <textarea id="input" rows="1" placeholder="输入指令，Enter 发送，Shift+Enter 换行"></textarea>
-  <button id="send-btn">发送</button>
+  <textarea id="input" rows="1" placeholder="Type a command — Enter to send, Shift+Enter for a new line"></textarea>
+  <button id="send-btn">Send</button>
 </div>
 
 <!-- Permission modal -->
 <div id="perm-overlay">
   <div id="perm-dialog">
-    <div id="perm-title">需要权限确认</div>
+    <div id="perm-title">Permission required</div>
     <div id="perm-body"></div>
     <div id="perm-actions">
-      <button class="perm-btn" id="perm-deny">拒绝</button>
-      <button class="perm-btn" id="perm-allow">允许</button>
+      <button class="perm-btn" id="perm-deny">Deny</button>
+      <button class="perm-btn" id="perm-allow">Allow</button>
     </div>
   </div>
 </div>
@@ -535,9 +552,10 @@
   const permOverlay = document.getElementById("perm-overlay");
   const permBody    = document.getElementById("perm-body");
 
-  function showPermission(requestId, tool, inp) {
+  function showPermission(requestId, tool, inp, reason) {
     pendingPermRequestId = requestId;
-    permBody.textContent = tool + "\n" + JSON.stringify(inp, null, 2);
+    const head = reason ? reason + "\n\n" : "";
+    permBody.textContent = head + tool + "\n" + JSON.stringify(inp, null, 2);
     permOverlay.classList.add("active");
   }
 
@@ -578,7 +596,7 @@
         updateCtx(evt.context);
 
       } else if (evt.type === "permission_request") {
-        showPermission(evt.requestId, evt.tool, evt.input);
+        showPermission(evt.requestId, evt.tool, evt.input, evt.reason);
 
       } else if (evt.type === "result") {
         removeLoading();
