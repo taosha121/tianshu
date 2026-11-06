@@ -136,30 +136,70 @@
 
 ## 二、完全缺失的特性
 
-### 6. Permission 系统（对应 s03）— 高优先级
+### 6. Permission 系统（对应 s03）✅
 
-**描述**：在执行破坏性工具（bash、write_file、edit_file）前，经过规则引擎判断是否需要用户确认。
+**完成时间**：2026-11-06
 
-**现状**：完全没有。`bash` 工具可以执行任意命令，`write_file` 可以覆盖任意文件，无任何拦截。
+**变更文件**：
+- `tianshu/agent/permission/core.py` — 新增：`PermissionEngine` + `PermissionRule` + `Decision`
+- `tianshu/agent/permission/__init__.py` — 新增
+- `tianshu/agent/core.py` — `_dispatch_tool` 接入权限检查，`__init__` 加 `_permission_cb`
+- `tianshu/agent/planner/core.py` — subagent 继承父 `_permission_cb`
+- `tianshu/server.py` — 线程安全的 `permission_request` 队列 + `/permission/{id}` 端点
+- `ui/static/index.html` — 权限确认弹窗
 
-**应有设计**：
-- `PermissionRule` 列表：按工具名、参数模式定义"自动允许 / 需要确认 / 永远拒绝"
-- 高风险模式举例：`rm -rf`、写入 `.env`、`git push --force`、修改系统目录
-- 与 UI 集成：server 侧发出 `permission_request` 事件，前端弹确认框，用户回应后继续
+**实现内容**：
+
+| 方面 | 实现 |
+|------|------|
+| 判定 | `PermissionEngine.check(tool, input) -> (Decision, reason)`，规则列表第一条命中生效，默认 ALLOW |
+| 决策 | `Decision.ALLOW`（自动执行）/ `ASK`（需用户确认）/ `DENY`（永远拒绝） |
+| 规则 | `PermissionRule`：按工具名 + 参数正则 / 自定义谓词匹配；支持 `extra_rules` 前置 |
+| 默认策略 | 只读工具与安全 shell（`ls`/`git status` 等无链式符号）自动放行；`bash`/`write_file`/`edit_file`/`create_directory` 需确认（写 `.env` 带专门 reason）；灾难性 bash（`rm -rf /`、fork bomb、`mkfs`、`dd of=/dev/`、关机等）直接拒绝 |
+| UI 集成 | ASK 时 server emit `permission_request`，前端弹框，用户回应经 `/permission/{id}` 写回线程安全队列，解除 agent 工作线程阻塞 |
+| 无头场景 | 无 `_permission_cb`（CLI / 子进程无 UI）时 ASK 默认放行 |
+
+**覆盖范围**：subagent 经 `_dispatch_tool` 同一路径并继承 `_permission_cb`，故权限检查自动覆盖所有子任务。
+
+**暂未实现（留待后续）**：
+- 从 `.tianshu/permission.json` 加载用户自定义规则（当前规则硬编码在默认集）
+- 前端并发权限请求的队列化（当前只跟踪单个 `pendingPermRequestId`）
 
 ---
 
-### 7. Hooks（对应 s04）— 高优先级
+### 7. Hooks（对应 s04）✅
 
-**描述**：在工具调用前后插入扩展逻辑，不修改核心循环。
+**完成时间**：2026-11-06
 
-**现状**：完全没有。工具调用是直接 `tool.func(**block.input)` 调用，无任何扩展点。
+**变更文件**：
+- `tianshu/agent/hooks/core.py` — 新增：`HookRegistry` + `HookOutcome` + shell-hook 加载器
+- `tianshu/agent/hooks/__init__.py` — 新增
+- `tianshu/agent/core.py` — `_dispatch_tool` 接入 pre/post hook，`__init__` 加 `_hooks` 参数并加载外部配置
+- `tianshu/agent/planner/core.py` — subagent 继承父 registry
 
-**应有设计**：
-- `PreToolUse` hook：调用前可以修改参数、记录日志、触发权限检查
-- `PostToolUse` hook：调用后可以转换结果、写审计日志、触发通知
-- hook 注册表：`HookRegistry.register(tool_name, phase, fn)`
-- 和 Permission 系统配合：permission check 可以实现为 `PreToolUse` hook
+**实现内容**：
+
+形式三（内核 Python registry + 外部 shell 配置）。工具执行顺序改为：
+
+```
+PreToolUse hooks → permission.check → tool.func → PostToolUse hooks
+```
+
+| 方面 | 实现 |
+|------|------|
+| 注册 | `HookRegistry.register(event, matcher, fn)` + `@reg.pre(matcher)` / `@reg.post(matcher)` 装饰器；matcher 为工具名或 `*` |
+| Pre hook | `fn(name, inp) -> HookOutcome\|None`，可放行 / 改写 input / 拦截（拦截则不进 permission、不执行） |
+| Post hook | `fn(name, inp, result) -> HookOutcome\|None`，可原样放行 / 链式改写 result / 触发副作用 |
+| 外部配置 | `load_shell_hooks` 读 `<cwd>/.tianshu/hooks.json`（项目级）+ `~/.tianshu/hooks.json`（全局），每条包装成 Python hook |
+| shell 协议 | `{event,tool,input[,result]}` JSON 经 stdin 传入；pre：exit 0 放行（stdout JSON `{input}` 可改写）/ exit 2 拦截（reason 取 stderr）/ 其它非 0 告警放行；post：stdout JSON `{result}` 可改写；超时 10s 告警放行 |
+| 容错 | hook 内部异常或超时一律捕获告警、按无操作处理，绝不崩掉 agent loop |
+| Permission 关系 | 保持独立（未重构），作为 pre hook 之后、执行之前的固定阶段 |
+
+**覆盖范围**：subagent 经 `Agent.chat` 走同一 `_dispatch_tool`，并通过 `_hooks` 继承父 registry，故 hook 自动覆盖所有子任务。
+
+**暂未实现（留待后续）**：
+- 其它事件（UserPromptSubmit / Stop / SessionStart）；结构上可扩展
+- hook 事件的 UI 可视化
 
 ---
 
@@ -285,8 +325,8 @@
 
 | 优先级 | 特性 | 理由 |
 |--------|------|------|
-| P0 | Permission 系统 | 安全兜底，没有它 tianshu 在任何真实环境中都是危险的 |
-| P0 | Hooks | Permission 和后续所有扩展点的基础，应先建好再往上加 |
+| P0 | ~~Permission 系统~~ | ✅ 已完成（见第六节）|
+| P0 | ~~Hooks~~ | ✅ 已完成（见第七节）|
 | P1 | ~~Memory 改造~~ | ✅ 已完成（见第二节）|
 | P1 | Plan 持久化 | 长任务稳定性，现在进程崩一次全丢 |
 | P1 | TodoWrite 工具 | 直接影响用户体验，前端已有任务面板可以承接 |

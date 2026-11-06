@@ -45,6 +45,8 @@ Prefix `/skill-name` to invoke a named skill directly, e.g. `/code_review`.
 - **Tool use**: read/write files, run shell commands, search code, fetch web pages
 - **Long-term memory**: important information persisted across sessions; two scopes — global (`~/.tianshu/memory/`) for cross-project preferences, project-level (`<cwd>/.tianshu/memory/`) for project-specific facts; index injected into system prompt, full content loaded on demand
 - **Context compression**: long conversations are compressed automatically to stay within the context window
+- **Permission control**: a rule engine classifies every tool call as auto-allow / ask / deny before it runs; read-only tools and safe shell commands pass through, writes and command execution ask for confirmation, catastrophic commands (`rm -rf /`, fork bombs, `mkfs`, …) are blocked
+- **Hooks**: PreToolUse / PostToolUse extension points — register Python callbacks or declare shell commands in `.tianshu/hooks.json` to rewrite arguments, block calls, transform results, or run side effects (format, audit, notify) without touching the core loop
 - **Multi-provider**: Anthropic and OpenAI-compatible backends behind a unified provider interface
 
 ## Architecture
@@ -250,3 +252,30 @@ user input
 **Provider layer:** `Provider` ABC with `call()` / `summarize()` / `complete()`. `make_provider(model)` selects by model name prefix — `"claude-*"` → `AnthropicProvider`, everything else → `OpenAIProvider` (default). All internal LLM calls go through this interface; the default model is `gpt-5`.
 
 **TUI:** `TianshuApp` (Textual) replaces the `input()` REPL and the FastAPI + browser UI. The agent runs in a thread worker; tool calls stream into the log panel in real time via the `_emit` callback.
+
+---
+
+### Phase 6: Permission and hooks (complete)
+
+**What:** a permission rule engine and a PreToolUse / PostToolUse hook layer, both wrapping the single tool-execution site.
+
+**Why:** an agent that can run arbitrary `bash` and overwrite any file is unsafe in any real environment — it needs a deterministic gate in front of destructive actions. And "always format after editing" / "never write `.env`" / "audit every shell command" are rules that must fire every time, not depend on the model remembering. Both are deterministic concerns that belong outside the probabilistic loop.
+
+**Execution order** (inside `Agent._dispatch_tool`):
+
+```
+PreToolUse hooks → permission.check → tool.func → PostToolUse hooks
+```
+
+**Permission** (`agent/permission/core.py`):
+- `PermissionEngine.check(tool, input) → (Decision, reason)`, first matching rule wins
+- `Decision`: `ALLOW` (auto) / `ASK` (confirm) / `DENY` (never)
+- defaults: read-only tools and safe shell auto-allow; writes and command execution ask; catastrophic bash denied
+- UI integration: on `ASK` the server emits `permission_request`, the browser confirms, the response unblocks the agent worker thread via a thread-safe queue
+
+**Hooks** (`agent/hooks/core.py`):
+- `HookRegistry`: register Python callbacks (`@reg.pre(matcher)` / `@reg.post(matcher)`); pre hooks may rewrite input or block, post hooks may rewrite the result or run side effects
+- `load_shell_hooks`: shell-command hooks declared in global and project `.tianshu/hooks.json`, following the Claude Code protocol (JSON over stdin, exit 2 blocks, stdout JSON rewrites)
+- hook failures and timeouts are caught and degrade to no-op — they never crash the agent loop
+
+Both cover sub-agents automatically: every step routes through the same `_dispatch_tool` and inherits the parent's permission callback and hook registry.

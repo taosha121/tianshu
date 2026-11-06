@@ -6,6 +6,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from tianshu.agent.memory import ContextManager, LongTermMemory
+from tianshu.agent.hooks import HookRegistry, load_shell_hooks
 from tianshu.agent.permission import Decision, PermissionEngine
 from tianshu.agent.planner import Planner, PlanExecutor, Plan, Step
 from tianshu.agent.provider import make_provider
@@ -179,6 +180,7 @@ class Agent:
         _agent_type: str = "main",
         _emit: Callable[[dict], None] | None = None,
         _permission_cb: Callable[[str, dict, str], bool] | None = None,
+        _hooks: HookRegistry | None = None,
         _max_iterations: int = _MAX_ITERATIONS,
     ):
         self.model = model or os.environ.get("AGENT_MODEL", "gpt-5")
@@ -191,6 +193,12 @@ class Agent:
         self.context = ContextManager(cwd=self.cwd)
         self.longterm = LongTermMemory(self.cwd)
         self.permission = PermissionEngine()
+        # Top-level agent loads shell hooks from .tianshu/hooks.json; subagents inherit the registry.
+        if _hooks is not None:
+            self.hooks = _hooks
+        else:
+            self.hooks = HookRegistry()
+            load_shell_hooks(self.hooks, self.cwd)
         self._system_prompt = _system_prompt or _build_system_prompt(self.cwd)
         self._agent_id = _agent_id
         self._agent_type = _agent_type
@@ -295,6 +303,11 @@ class Agent:
         return "Maximum iterations reached without completing the task."
 
     def _dispatch_tool(self, name: str, inp: dict, tool) -> str:
+        # PreToolUse hooks: may rewrite input or block before anything runs.
+        inp, block_reason = self.hooks.run_pre(name, inp)
+        if block_reason is not None:
+            return f"[Blocked by hook] {block_reason}. Do not retry; explain to the user."
+
         decision, reason = self.permission.check(name, inp)
 
         if decision is Decision.DENY:
@@ -309,8 +322,12 @@ class Agent:
                         f"Do not retry; ask how they would like to proceed.")
 
         if tool is None:
-            return f"Unknown tool: {name}"
-        return tool.func(**inp)
+            result = f"Unknown tool: {name}"
+        else:
+            result = tool.func(**inp)
+
+        # PostToolUse hooks: may rewrite the result or trigger side effects.
+        return self.hooks.run_post(name, inp, result)
 
     def execute(self, goal: str) -> str:
         if self._emit:
