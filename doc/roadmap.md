@@ -101,6 +101,8 @@
 
 > 更新（2026-11-06）：**Plan 持久化已废弃，不做**。Plan 现只剩 `execute_skill` 一个入口，是「开始即跑完」的单次同步结构，没有跨 turn/session 的驻留状态，也没有中间 step 续跑逻辑，序列化到磁盘无人读取。崩溃恢复真正该关注的进度载体是 `self.todos`（纯内存），而非 Plan；真正的长任务可续跑归第 13 节 Workflow Runtime（journal + 断点续跑），不在此处补。
 
+> 更新（2026-11-09）：**Planner / PlanExecutor 模块已整个删除**。第五节 skill 改为注入式后，`execute_skill` 一并移除，Plan 的最后一个用户消失。`tianshu/agent/planner/` 及 `tests/test_planner.py` 已删。任务拆分完全由模型在 `chat` loop 里用 `todo_list_write`（记进度）/ `invoke_subagent`（起子 agent）自主决定，框架不再有任何拆分判断逻辑。本节就此收尾。
+
 ---
 
 ### 4. Subagent（对应 s06）
@@ -122,9 +124,11 @@
 
 ---
 
-### 5. Skill 系统（对应 s07）
+### 5. Skill 系统（对应 s07）✅
 
-**现状**：YAML 定义 skill，`SkillLoader.match()` 用 LLM 做语义相似度判断，skill 本质是步骤列表，执行时转成 Plan。
+**完成时间**：2026-11-09
+
+**现状（旧）**：YAML 定义 skill，`SkillLoader.match()` 用 LLM 做语义相似度判断，skill 本质是步骤列表，执行时转成 Plan。
 
 **问题**：
 - 每次 `execute()` 都发 LLM 调用做 skill matching，即使没有任何 skill 注册
@@ -132,10 +136,24 @@
 - skill steps 是自然语言描述，无法直接调用工具或其他 skill
 - skill match 提示词要求"80% 语义相似度"，但 LLM 判断不稳定
 
-**改进方向**：
-- 先用关键词 / 前缀做快速过滤，匹配失败再 LLM
-- skill 支持 `trigger` 字段（正则或关键词），减少不必要的 LLM 调用
-- 考虑支持 skill 调用其他 skill 的嵌套
+**变更文件**：
+- `tianshu/agent/skills/core.py` — 删 `match()` + `_MATCH_PROMPT`，新增 `to_prompt()`（渲染 skill 目录为 system prompt 片段，无 skill 时返回空串）
+- `tianshu/agent/tools/core.py` — 新增 `use_skill(name)` 工具
+- `tianshu/agent/core.py` — `_build_system_prompt` 注入 skill 列表；`execute()` 删除 skill match 分支直接 `chat()`；删 `execute_skill`
+- `tests/test_skills.py` — 去掉 match 测试，加 `to_prompt` / `use_skill` 测试
+
+**实现内容**：改为**注入式**（对标 opencode）。skill 的 `name + description` 随 system prompt 一起带给模型（和 tool schema 同理），模型在正常 `chat` loop 里自主判断是否调用 `use_skill(name)`；`use_skill` 返回该 skill 的 description + steps 文本，模型照着用普通工具执行。
+
+| 方面 | 旧设计 | 新设计 |
+|------|--------|--------|
+| 匹配 | 每请求前置发一次独立 LLM（`match()`） | 零额外 LLM，skill 列表常驻 system prompt，模型自主调 `use_skill` |
+| 触发成本 | 不管问啥都多一次往返 | 0（命中 prompt cache） |
+| 执行 | 硬转线性 Plan（`execute_skill` → `PlanExecutor`） | skill 内容作为指引注入，模型自由用工具执行，不再线性 |
+| Plan 依赖 | 依赖 Planner/PlanExecutor | 已解耦，planner 模块随之删除（见第三节） |
+
+**暂未实现（留待后续）**：
+- skill 的 `trigger`/关键词字段（注入式下已无必要——匹配交给模型，但可用于大量 skill 时的分层裁剪）
+- skill 调用其他 skill 的嵌套（当前扁平，skill 正文可引导模型再调 `use_skill`）
 
 ---
 
@@ -351,10 +369,13 @@ PreToolUse hooks → permission.check → tool.func → PostToolUse hooks
 | P1 | ~~Memory 改造~~ | ✅ 已完成（见第二节）|
 | ~~P1~~ | ~~Plan 持久化~~ | ❌ 已废弃：Plan 退化为 skill 专用的单次同步结构，持久化前提不成立（见第三节） |
 | P1 | ~~TodoWrite 工具~~ | ✅ 已完成（见第八节，含 invoke_subagent + 废除前置 Planner）|
+| P1 | ~~Skill 注入式改造~~ | ✅ 已完成（见第五节，省掉每请求一次匹配 LLM，planner 模块随之删除）|
+| P0 | ~~工具异常转结果~~ | ✅ 已完成（工具执行异常不再冲垮 loop，统一回传模型自愈）|
+| P1 | ~~只读工具并发~~ | ✅ 已完成（同批只读工具并发执行，写类殿后，结果按序回填）|
 | P2 | 后台任务 | 解锁长时间命令（测试、构建、安装依赖） |
 | P2 | ~~Context Compact 改进~~ | ✅ 已完成（O1）|
 | P3 | Cron 调度器 | 独立特性，不阻塞其他开发 |
 | P3 | MCP 插件 | 扩展性，有 Hooks 后实现更自然 |
-| P4 | Agent Teams | 复杂度高，依赖 Plan 持久化和 Permission 先就绪 |
-| P4 | Workflow Runtime | 需要 Plan 持久化作为基础 |
+| P4 | Agent Teams | 复杂度高，依赖 Permission（已就绪）；需先有会话持久化 |
+| P4 | Workflow Runtime | 长任务 journal + 断点续跑（Plan 持久化废弃后，长任务可续跑归此处） |
 | P4 | Goal Loop | 在其他机制稳定后再做收尾 |
