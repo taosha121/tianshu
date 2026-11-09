@@ -249,7 +249,7 @@ def invoke_subagent(goal: str, tools: list | None = None) -> str:
 
 def use_skill(name: str) -> str:
     from tianshu.agent.skills import SkillLoader
-    skill = SkillLoader().find(name)
+    skill = SkillLoader(cwd=os.getcwd()).find(name)
     if skill is None:
         return f"Unknown skill: {name}"
     lines = [f"Skill: {skill.name}", skill.description]

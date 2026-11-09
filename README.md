@@ -10,13 +10,27 @@ Name the goal. Tianshu thinks, plans, and executes — step by step, until done.
 
 ## Installation
 
+### User (pip install)
+
 ```bash
+pip install tsagent
+```
+
+This installs the `ts` command globally.
+
+### Developer (from source)
+
+```bash
+git clone https://github.com/your-org/tianshu
+cd tianshu
 make install
 ```
 
-## Setup
+## Configuration
 
-Create a `.env` file in your project root:
+### User
+
+Create `~/.tianshu/.env`:
 
 ```bash
 OPENAI_API_KEY=your_api_key
@@ -24,285 +38,194 @@ AGENT_MODEL=gpt-5               # optional; defaults to gpt-5; prefix "claude" �
 TAVILY_API_KEY=your_tavily_key  # optional, for web_search
 ```
 
+This file is the global config and is loaded for every `ts` invocation regardless of where you run it. Environment variables already set in your shell take precedence.
+
 The local proxy (`http://localhost:6655/openai/v1`) is used as the OpenAI-compatible endpoint. Set `OPENAI_API_KEY` to authenticate.
+
+### Developer
+
+Create a `.env` file in the repo root. It overrides `~/.tianshu/.env` for values set in both.
+
+```bash
+OPENAI_API_KEY=your_api_key
+AGENT_MODEL=gpt-5
+TAVILY_API_KEY=your_tavily_key
+```
 
 ## Usage
 
-```bash
-make run
-```
-
-Launches the full-screen TUI. Type a goal and press Enter; Ctrl+C to quit.
-
-To point the agent at a different working directory, pass a path or a name under `projects/`:
+### User
 
 ```bash
-.venv/bin/ts /path/to/project     # any absolute/relative path
-.venv/bin/ts myproject            # a sibling directory under projects/
+cd /path/to/your/project
+ts
 ```
 
-Prefix `/skill-name` to invoke a named skill directly, e.g. `/code_review`.
+Starts the server and opens the web UI at `http://localhost:8000`. Ctrl+C to quit.
+
+### Developer
+
+```bash
+cd /path/to/your/project
+make run        # equivalent to .venv/bin/ts
+```
 
 ## Features
 
-- **TUI**: full-screen terminal interface (Textual), keyboard-driven
-- **Chat mode**: multi-turn conversation with full context
-- **Self-directed task list**: for a multi-step task the model calls `todo_list_write` to lay out and track its own checklist; the UI renders it live (pending / in-progress / done). Whether to plan at all is the model's decision inside the loop — there is no forced pre-pass that pre-judges every request
-- **Subagent delegation**: the model can call `invoke_subagent` to hand an isolated or independent chunk of work to a fresh subagent — its own context, optional tool allowlist — and get back only the final result, keeping the parent context clean
-- **Skills**: predefined step sequences for common workflows; auto-matched by semantics or triggered manually with `/skill-name`
-- **Tool use**: read/write files, run shell commands, search code, fetch web pages
-- **Long-term memory**: important information persisted across sessions; two scopes — global (`~/.tianshu/memory/`) for cross-project preferences, project-level (`<cwd>/.tianshu/memory/`) for project-specific facts; index injected into system prompt, full content loaded on demand
-- **Context compression**: long conversations are compressed automatically to stay within the context window
-- **Permission control**: a rule engine classifies every tool call as auto-allow / ask / deny before it runs; read-only tools and safe shell commands pass through, writes and command execution ask for confirmation, catastrophic commands (`rm -rf /`, fork bombs, `mkfs`, …) are blocked
-- **Hooks**: PreToolUse / PostToolUse extension points — register Python callbacks or declare shell commands in `.tianshu/hooks.json` to rewrite arguments, block calls, transform results, or run side effects (format, audit, notify) without touching the core loop
-- **Multi-provider**: Anthropic and OpenAI-compatible backends behind a unified provider interface
+### ReAct loop & tools
 
-## Architecture
+The core of Tianshu is a tool-use loop that runs up to 20 iterations per turn. Each iteration: call the model with the current history and tool schemas → if the model returns tool calls, execute them and append results → if the model returns text, the turn ends. The model decides when it is done; there is no forced planning pass in front of every request.
 
-![Agent Flow](resources/agent-flow.drawio.svg)
+On the last iteration, `tool_choice` is set to `none` so the model produces a text summary of what it has done rather than cutting off mid-task.
 
-### Single Agent Request Flow
+The built-in tools are:
 
-![Agent Request Flow](resources/agent-request-flow.drawio.svg)
+| Category | Tools |
+|----------|-------|
+| File I/O | `read_file`, `write_file`, `edit_file`, `create_directory` |
+| Code navigation | `get_outline`, `find_symbol`, `list_files`, `grep_files` |
+| Shell | `bash` |
+| Web | `web_search`, `web_fetch` |
+| Memory | `save_memory`, `read_memory`, `delete_memory` |
+| Agent | `todo_list_write`, `invoke_subagent`, `use_skill` |
 
-## Project Structure
+### Concurrent tool execution
 
-```
-tianshu/
-├── main.py                    # TUI entry point (Textual app)
-└── agent/
-    ├── __init__.py            # re-exports Agent
-    ├── core.py                # Agent class: chat / execute / execute_skill, system prompt builder
-    ├── provider/
-    │   ├── __init__.py        # make_provider() factory
-    │   ├── base.py            # Provider ABC: call / summarize / complete
-    │   ├── anthropic_provider.py
-    │   └── openai_provider.py
-    ├── planner/
-    │   ├── __init__.py        # re-exports Planner, PlanExecutor, Replanner
-    │   └── core.py            # goal decomposition, parallel execution, dynamic replanning
-    ├── tools/
-    │   ├── __init__.py        # re-exports TOOLS, TOOL_MAP, Tool
-    │   └── core.py            # 16 built-in tools
-    ├── skills/
-    │   ├── __init__.py        # re-exports Skill, SkillLoader
-    │   ├── core.py            # Skill dataclass + SkillLoader (load / match / find)
-    │   └── builtin/           # built-in skill YAMLs
-    └── memory/
-        ├── __init__.py        # re-exports ContextManager, LongTermMemory
-        ├── context.py         # ContextManager: conversation compression
-        └── longterm.py        # LongTermMemory: MEMORY.md index + per-entry files; global + project scopes
-```
+When the model issues multiple tool calls in a single step, read-only tools run concurrently (via `ThreadPoolExecutor`) and their results are merged back in the original call order before being appended to history. Write-type tools are held until all concurrent reads complete. This makes a common pattern — "read three files and then edit one" — meaningfully faster.
 
-### Chat mode
+### Self-directed planning
 
-```
-user input
-  │
-  ▼
-Agent.chat()
-  │
-  ├─ System prompt (built once at init, reused across turns)
-  │    ├── base instructions (role, tool-use principles)
-  │    ├── project type detection (pyproject.toml / package.json / go.mod …)
-  │    ├── top-level directory listing (up to 40 entries)
-  │    ├── repo outline (all def / class with line numbers)
-  │    ├── git status & branch
-  │    └── long-term memory index (global ~/.tianshu/memory/MEMORY.md + project .tianshu/memory/MEMORY.md)
-  │
-  ├─ ContextManager.prepare()
-  │    ├── step 1: spill oversized tool results to .tianshu/tool-results/
-  │    ├── step 2: archive message middle to .tianshu/transcripts/ when count ≥ 50
-  │    ├── step 3: replace seen tool results with disk refs if chars > 400K
-  │    └── step 4: LLM compact as last resort
-  │
-  └─ Tool-use loop (up to 20 iterations)
-       │
-       ├── API call (history + tool schemas)
-       │
-       ├── stop_reason = end_turn ──→ return text to user
-       │
-       └── stop_reason = tool_use
-            ├── file ops      read_file / write_file / edit_file / create_directory
-            ├── code nav      get_outline / find_symbol / grep_files / list_files
-            ├── shell         bash
-            ├── web           web_search / web_fetch
-            └── memory        save_memory / delete_memory / read_memory
-                 │
-                 └── tool result appended to history → next iteration
-```
+The agent has two tools for managing complex tasks:
 
-### Plan mode (auto-triggered or `/skill-name`)
+- **`todo_list_write`**: a full-replace checklist (`pending` / `in_progress` / `completed`). The model calls this whenever it wants to lay out a task breakdown or track progress. The web UI renders it live and fades it out once everything is done. Near-zero cost — it is just a list stored on the agent, not a subagent spawn.
+- **`invoke_subagent`**: delegates an isolated chunk of work to a fresh agent with its own history. The parent's context stays clean; only the final result comes back. Supports an optional tool allowlist so a subagent can be restricted to read-only tools.
 
-```
-user input
-  │
-  ├─ starts with / → SkillLoader.find() → exact skill match → Agent.execute_skill()
-  │
-  └─ plain input → Agent.execute()
-       │
-       ├─ SkillLoader.match() (semantic match) → hit → use predefined steps directly
-       │
-       └─ Planner.decompose() (LLM decides)
-            ├─ needs_plan=false → Agent.chat() (plain conversation)
-            └─ needs_plan=true  → Plan { steps: [...] }
-                    │
-                    ▼
-              PlanExecutor.execute()
-                    │
-                    ├── create shared workspace .tianshu/workspace/<uuid>/
-                    │
-                    ├─ scheduling loop (ThreadPoolExecutor, max_workers=4)
-                    │    └── find all steps whose depends_on are satisfied, submit concurrently
-                    │
-                    ├─ each step (independent Agent)
-                    │    ├── new Agent instance (reuses parent system prompt)
-                    │    ├── prompt: overall goal + current step + prerequisite output file paths
-                    │    └── Agent.chat() → full tool-use loop → record result
-                    │
-                    ├─ on step failure → Replanner.replan()
-                    │    └── LLM decides: skip / retry (new description) / replace remaining steps
-                    │
-                    └── summary: all done → output summary / partial failure → list failed steps
-```
+Whether to use either tool is the model's decision, made in context while working — not a forced pre-pass that pre-judges every request.
 
----
+### Memory management
 
-## Agent iteration plan
+**Long-term memory** persists important information across sessions in a two-scope, two-tier structure:
 
-### Phase 1: Basic agent (complete)
+- **Two scopes**: global (`~/.tianshu/memory/`) for cross-project preferences and facts; project-level (`<cwd>/.tianshu/memory/`) for project-specific knowledge.
+- **Two tiers per scope**: a `MEMORY.md` index (one line per entry, injected into every system prompt) plus one file per memory entry. The index is always loaded; full entry content is fetched on demand via `read_memory`.
+- **Typed entries**: each entry carries a frontmatter `type` field (`fact` / `decision` / `preference` / `error`) and a `description` field used to decide relevance without reading the body.
 
-**What:** custom tool system, ReAct loop, memory management.
+The model manages memory with `save_memory`, `read_memory`, and `delete_memory`. Only the index is in-context by default, keeping the system prompt lean regardless of how many entries accumulate.
 
-**Why:** a useful agent needs three primitives — access to the outside world (tools), multi-step reasoning (ReAct loop), and cross-turn memory (short-term compression + long-term persistence). None of these is optional: without tools the agent can only talk, without a loop it cannot handle complex tasks, without memory every conversation starts from zero.
+**Context compression** keeps long conversations within the context window through a four-step pipeline before each API call, prioritizing demotion over deletion — every piece of data reaches disk before it leaves context, and the model can retrieve it via `read_file` if needed:
 
-**Key components:**
-- `tools/core.py`: 16 built-in tools (file I/O, code navigation, bash, web, memory, todo list, subagent)
-- `agent/core.py`: ReAct loop, up to 20 iterations
-- `memory/context.py`: short-term memory — 4-step compression pipeline (spill to disk → archive middle → demote seen results → LLM summary)
-- `memory/longterm.py`: long-term memory — `MEMORY.md` index + per-entry files; global (`~/.tianshu/memory/`) + project (`.tianshu/memory/`) scopes
+| Step | Trigger | What happens |
+|------|---------|--------------|
+| 1. `_tool_result_budget` | always | Latest tool batch total > 100K chars → spill oversized results (> 20K) to `.tianshu/tool-results/` |
+| 2. `_snip_compact` | always | Message count ≥ 50 → archive the middle segment to `.tianshu/transcripts/`, replace with a one-line marker |
+| 3. `_micro_compact` + `_fit_tool_results` | total chars > 400K | Replace old seen tool results with disk references; keep the most recent 3 intact |
+| 4. `_compact_history` | still over after step 3 | LLM summarization as last resort; full history → one summary message |
 
----
+If the API returns `prompt_too_long`, a reactive compact fires immediately: summarize everything except the last 5 messages and retry once.
 
-### Phase 2: Plan mode (complete)
+### Skills
 
-**What:** Planner (goal decomposition) + PlanExecutor (per-step independent execution).
+Skills are reusable workflows for tasks you run repeatedly — code review, running and fixing tests, or any multi-step sequence you want the agent to follow consistently. Without skills, the model re-plans the same kind of task from scratch every time, wasting tokens and producing inconsistent results.
 
-**Why:** the ReAct loop has two hard limits. First, `_MAX_ITERATIONS = 20` — complex tasks need far more than 20 tool calls. Second, history grows unboundedly — a multi-step task inflates context until the model "forgets" earlier work. Plan mode solves this with divide-and-conquer: one LLM call decomposes the goal into 3–8 steps, then each step runs in its own Agent with its own history.
+A skill is a YAML file with a name, description, and a list of steps. Place them in `~/.tianshu/skills/` (global, shared across projects) or `<cwd>/.tianshu/skills/` (project-level). A project-level skill with the same name as a global one takes precedence.
 
-**Key components:**
-- `Planner.decompose()`: single LLM call, outputs a step list
-- `PlanExecutor.execute()`: instantiates an independent Agent per step, passes the previous step's result as context
+The matching is zero-cost: all skill names and descriptions are injected into the system prompt. The model calls the `use_skill(name)` tool when it decides a skill applies; `use_skill` returns the full steps as text and the model executes them with its normal tools — no separate LLM call, no rigid linear plan.
 
----
+### Permission control
 
-### Phase 3: Multi-agent orchestration (complete)
+Every tool call passes through a rule engine before it executes:
 
-**What:** parallel execution (DAG dependencies), shared workspace, dynamic replanning.
+- `PermissionEngine.check(tool, input)` returns `ALLOW`, `ASK`, or `DENY`; first matching rule wins.
+- **Default policy**: read-only tools and safe shell commands auto-allow; `bash`, `write_file`, `edit_file`, `create_directory` ask for confirmation; catastrophic bash commands (`rm -rf /`, fork bombs, `mkfs`, `dd of=/dev/`, shutdown) are hard-denied.
+- On `ASK`, the web UI surfaces a confirmation prompt; the agent worker thread blocks on a thread-safe queue until the user responds.
+- Subagents inherit the parent's permission callback through the same `_dispatch_tool` path — there is no bypass.
 
-**Why:** phase 2 steps were strictly sequential — even independent steps had to wait for each other. Real tasks (e.g. "analyze 5 files and summarize") can run concurrently. Also, summaries are too small to share large artifacts between steps. And abandoning the entire plan on a single failure is too costly — the model should decide how to recover.
+### Hooks
 
-**New capabilities:**
-- **Parallel execution**: `Step.depends_on` defines a DAG; `ThreadPoolExecutor` runs all steps whose dependencies are satisfied concurrently
-- **Shared workspace**: each plan creates `.tianshu/workspace/<uuid>/`; steps write files there and downstream steps read them by path
-- **Dynamic replanning**: on step failure, `Replanner` asks the LLM to `skip` / `retry` / `replace` remaining steps (up to 3 times)
-
----
-
-### Phase 4: Auto plan triggering and skills (complete)
-
-**What:** remove the explicit `/plan` command; introduce a reusable skill system.
-
-**Why removing `/plan`:** it exposes an internal implementation detail. Complexity judgment is the model's responsibility, not the user's. `Planner` now includes a `needs_plan` field in its prompt — the model returns `None` for simple tasks (falls back to `chat()`) or a `Plan` for complex ones, transparently.
-
-**Why skills:** high-frequency workflows (e.g. "run tests and fix failures", "review recent changes") had to be re-planned from scratch every time, wasting tokens and risking inconsistent plans. Skills are predefined step sequences stored as YAML — they can be auto-matched when the user's input is semantically close, or triggered precisely with `/skill-name`.
-
-**Key components:**
-- `Skill`: pure data class with `name`, `description`, `steps`
-- `SkillLoader`: loads `builtin/*.yaml`; provides `find()` (exact match) and `match()` (single LLM semantic match)
-- `Planner.decompose()`: tries skill match first; falls back to LLM planning; returns `None` if `needs_plan=false`
-- `Agent.execute_skill()`: converts Skill → Plan → PlanExecutor
-
----
-
-### Phase 5: Optimization (complete)
-
-#### O1: Context compression — 4-step pipeline
-
-**What:** replaced the single-step LLM summarization with a four-step compression pipeline.
-
-| Step | When | What happens |
-|------|------|--------------|
-| 1. `_tool_result_budget` | always | Latest tool batch total > 100K chars → spill oversized individual results (> 20K) to `.tianshu/tool-results/` |
-| 2. `_snip_compact` | always | Message count ≥ 50 → archive the middle to `.tianshu/transcripts/`, replace with a one-line marker |
-| 3. `_micro_compact` + `_fit_tool_results` | total chars > 400K | Replace seen old tool results with disk references; keep most recent 3 intact |
-| 4. `_compact_history` | still over after step 3 | LLM summarization as last resort; entire history → one summary message |
-
-**Key design shift — demotion not deletion:** every piece of data lands on disk before it leaves context. The model sees a path reference and can retrieve it via `read_file` if needed.
-
-#### O2: Long-term memory — index + per-entry files, two scopes
-
-**What:** replaced the single append-only `memory.md` with a structured two-tier memory system.
-
-| Aspect | Old | New |
-|--------|-----|-----|
-| Storage | `<project>/.agent/memory.md` (append-only) | `MEMORY.md` index + one file per entry |
-| Scopes | project-only | global (`~/.tianshu/memory/`) + project (`<cwd>/.tianshu/memory/`) |
-| Entry format | plain text | frontmatter (`name` / `type` / `description`) + body |
-| Types | none | `fact` / `decision` / `preference` / `error` |
-| Tools | `save_memory(note)` | `save_memory(slug, type, description, content, scope)` / `delete_memory` / `read_memory` |
-| Injection | full file contents | index only; full entry loaded on demand via `read_memory` |
-
-#### O3: Multi-provider abstraction + TUI
-
-**What:** unified provider interface supporting Anthropic and OpenAI-compatible backends; replaced web UI + FastAPI server with a native terminal UI (Textual).
-
-**Provider layer:** `Provider` ABC with `call()` / `summarize()` / `complete()`. `make_provider(model)` selects by model name prefix — `"claude-*"` → `AnthropicProvider`, everything else → `OpenAIProvider` (default). All internal LLM calls go through this interface; the default model is `gpt-5`.
-
-**TUI:** `TianshuApp` (Textual) replaces the `input()` REPL and the FastAPI + browser UI. The agent runs in a thread worker; tool calls stream into the log panel in real time via the `_emit` callback.
-
----
-
-### Phase 6: Permission and hooks (complete)
-
-**What:** a permission rule engine and a PreToolUse / PostToolUse hook layer, both wrapping the single tool-execution site.
-
-**Why:** an agent that can run arbitrary `bash` and overwrite any file is unsafe in any real environment — it needs a deterministic gate in front of destructive actions. And "always format after editing" / "never write `.env`" / "audit every shell command" are rules that must fire every time, not depend on the model remembering. Both are deterministic concerns that belong outside the probabilistic loop.
-
-**Execution order** (inside `Agent._dispatch_tool`):
+Two extension points wrap every tool call:
 
 ```
 PreToolUse hooks → permission.check → tool.func → PostToolUse hooks
 ```
 
-**Permission** (`agent/permission/core.py`):
-- `PermissionEngine.check(tool, input) → (Decision, reason)`, first matching rule wins
-- `Decision`: `ALLOW` (auto) / `ASK` (confirm) / `DENY` (never)
-- defaults: read-only tools and safe shell auto-allow; writes and command execution ask; catastrophic bash denied
-- UI integration: on `ASK` the server emits `permission_request`, the browser confirms, the response unblocks the agent worker thread via a thread-safe queue
+- **Pre hooks** can rewrite the input or block the call entirely before it reaches the permission check.
+- **Post hooks** can rewrite the result or run side effects (format, audit, notify) after execution.
 
-**Hooks** (`agent/hooks/core.py`):
-- `HookRegistry`: register Python callbacks (`@reg.pre(matcher)` / `@reg.post(matcher)`); pre hooks may rewrite input or block, post hooks may rewrite the result or run side effects
-- `load_shell_hooks`: shell-command hooks declared in global and project `.tianshu/hooks.json`, following the Claude Code protocol (JSON over stdin, exit 2 blocks, stdout JSON rewrites)
-- hook failures and timeouts are caught and degrade to no-op — they never crash the agent loop
+Hooks are registered as Python callbacks (`@reg.pre(matcher)` / `@reg.post(matcher)`) or declared as shell commands in `.tianshu/hooks.json` (project-level) and `~/.tianshu/hooks.json` (global). The shell protocol follows the Claude Code convention: JSON over stdin, exit 2 blocks, stdout JSON rewrites. Hook failures and timeouts are caught and degrade to no-op — they never crash the agent loop.
 
-Both cover sub-agents automatically: every step routes through the same `_dispatch_tool` and inherits the parent's permission callback and hook registry.
+### Multi-provider
 
-### Phase 7: Self-directed planning — todo list + subagents (complete)
+Anthropic and OpenAI-compatible backends share a unified `Provider` interface (`call` / `summarize` / `complete`). `make_provider(model)` routes by model name prefix: `"claude-*"` → `AnthropicProvider`, everything else → `OpenAIProvider`. All internal LLM calls — main loop, subagents, context compression summaries — go through this interface.
 
-**What:** two model-invoked tools — `todo_list_write` (a self-managed checklist) and `invoke_subagent` (delegate an isolated subtask) — plus removal of the forced per-request planner gate.
+## Architecture
 
-**Why:** the old `execute()` sent every request through `Planner.decompose()` first — one blind LLM call, with no execution context, deciding whether to split the task. It over-triggered: trivial requests got decomposed into 3–8 steps and fanned out to parallel subagents, because "splitting" and "spawning subagents" were welded together, so the gate was both expensive and twitchy. The fix follows Claude Code's model: there is no pre-pass. A request goes straight into the `chat` loop, and the model decides — in context, while working — whether to lay out a todo list (near-zero cost, just a checklist) and whether to delegate a chunk to a subagent (high cost, isolated context). The two decisions are now separate tools, so tracking progress no longer drags in the cost of spawning.
+```mermaid
+flowchart TD
+    USER([User input]) --> CTX
 
-**Files:**
-- `tools/core.py`: `todo_list_write(todos)` — full-replace checklist, validated and normalized; `invoke_subagent(goal, tools?)` — placeholder whose real execution lives in the agent runtime
-- `core.py`: `_dispatch_tool` branches for both; `execute()` drops the forced `Planner` path; `Agent` gains `self.todos`, a `_tools` allowlist, and a per-agent `_tool_map`
-- `ui/static/index.html`: live todo panel, grouped per agent (subagent lists indent below the main one), auto-fading once everything is complete
+    subgraph LOOP["chat()  ·  max 20 iterations"]
+        CTX["ContextManager.prepare()
+        ─────────────────────────
+        ① tool_result_budget
+        ② snip_compact
+        ③ micro_compact
+        ④ compact_history"]
 
-**Behavior:**
-- `todo_list_write` stores the list on the agent and emits `todo_updated` (carrying `agentId` + `agentType`); it returns a short acknowledgement rather than echoing the whole list back into context
-- `invoke_subagent` builds a fresh `Agent` inheriting the parent's provider, cwd, system prompt, hooks, and permission callback, optionally restricted to a tool allowlist; the subagent's exploration stays in its own history and only the final text returns
-- `Plan` / `PlanExecutor` are retained for skills' linear steps (`execute_skill`); ordinary requests no longer force a planner pass
+        API["LLM API call
+        history + tool schemas"]
 
-Not yet done: true subagent parallelism (dispatch is sequential), structured subagent results (currently plain text), todo persistence (in-memory, per session).
+        DEC{stop_reason?}
 
+        CTX --> API --> DEC
+    end
+
+    DEC -->|end_turn / last iter| RET([Return text to user])
+    DEC -->|tool_use| DISPATCH
+
+    subgraph DISPATCH["_dispatch_tool"]
+        PRE["PreToolUse hooks"]
+        PERM["permission.check()
+        ALLOW · ASK · DENY"]
+        FN["tool.func()"]
+        POST["PostToolUse hooks"]
+        PRE --> PERM --> FN --> POST
+    end
+
+    FN -->|invoke_subagent| SUB
+
+    subgraph SUB["Subagent  ·  own history"]
+        SA_INFO["inherits: provider · cwd · system prompt
+        hooks · permission · emit
+        optional tool allowlist
+        ↳ runs same chat() loop"]
+    end
+
+    DISPATCH --> APP
+    SUB -->|final text only| APP
+    APP(["append result(s) to history"]) --> CTX
+
+    subgraph SYS["System Prompt  (built once at init)"]
+        direction LR
+        S1["base instructions
+        project type · structure · outline
+        git status · .tianshu.md"]
+        S2["skill catalog
+        long-term memory index"]
+    end
+
+    subgraph MEM["Long-term Memory"]
+        direction LR
+        M1["~/.tianshu/memory/  global"]
+        M2[".tianshu/memory/  project"]
+    end
+
+    subgraph DISK[".tianshu/  disk"]
+        direction LR
+        D1["tool-results/"]
+        D2["transcripts/"]
+    end
+
+    MEM -. "index injected" .-> SYS
+    SYS -. "prepended each turn" .-> CTX
+    CTX -. "spill / archive" .-> DISK
+```

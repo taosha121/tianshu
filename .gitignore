@@ -1,6 +1,5 @@
 .env
 .claude/
-.agent/
 .tianshu/
 .playwright-mcp/
 __pycache__/

@@ -32,6 +32,7 @@ class Provider(ABC):
         system: str,
         messages: list,
         tool_schemas: list,
+        tool_choice: str | None = None,
     ) -> ProviderResponse: ...
 
     @abstractmethod

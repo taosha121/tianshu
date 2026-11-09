@@ -9,28 +9,33 @@ class Skill:
     steps: list[str] = field(default_factory=list)
 
 
-_BUILTIN_DIR = Path(__file__).parent / "builtin"
-
-
 class SkillLoader:
-    def __init__(self, extra_dir: str | None = None):
+    def __init__(self, cwd: str = "."):
+        self._cwd = cwd
         self._skills: list[Skill] | None = None
-        self._extra_dir = Path(extra_dir) if extra_dir else None
 
     def _load(self) -> list[Skill]:
         if self._skills is not None:
             return self._skills
         import yaml
+        dirs = [
+            Path.home() / ".tianshu" / "skills",
+            Path(self._cwd) / ".tianshu" / "skills",
+        ]
+        seen: set[str] = set()
         skills = []
-        dirs = [_BUILTIN_DIR]
-        if self._extra_dir and self._extra_dir.is_dir():
-            dirs.append(self._extra_dir)
         for d in dirs:
+            if not d.is_dir():
+                continue
             for f in sorted(d.glob("*.yaml")):
                 try:
                     data = yaml.safe_load(f.read_text(encoding="utf-8"))
+                    name = data["name"]
+                    if name in seen:
+                        skills = [s for s in skills if s.name != name]
+                    seen.add(name)
                     skills.append(Skill(
-                        name=data["name"],
+                        name=name,
                         description=data["description"],
                         steps=data.get("steps", []),
                     ))
@@ -46,10 +51,6 @@ class SkillLoader:
         return next((s for s in self._load() if s.name == name), None)
 
     def to_prompt(self) -> str:
-        """Render the skill catalog for injection into the system prompt.
-
-        Empty string when no skills are registered, so the prompt stays clean.
-        """
         skills = self._load()
         if not skills:
             return ""

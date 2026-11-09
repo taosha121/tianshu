@@ -91,7 +91,7 @@ opencode 里有几个**思路零成本、实现可轻量**的点,tianshu 可以�
 
 2. **Subagent 结构化返回 + 后台唤醒**。opencode 子 agent 是独立 session,返回 `<subagent sessionID=... state=...>…</subagent>` 结构化块,且 background 子 agent 完成后用合成消息唤醒父循环。tianshu 的 [invoke_subagent](../tianshu/agent/core.py#L353) 已有工具白名单(对标到位),缺的是**结构化返回**和**真并行**(roadmap 第八节已列为"留待后续")。
 
-3. **Max-steps 优雅收尾**。tianshu 撞到 20 轮上限直接返回 "Maximum iterations reached"([core.py:312](../tianshu/agent/core.py#L312)),是生硬截断。opencode 到达 step 上限时**注入一条提示 + 把 `tool_choice` 设成 `none`**,强制模型用纯文本把当前进展收尾。小改动,体验提升明显。
+3. **Max-steps 优雅收尾**。~~tianshu 撞到 20 轮上限直接返回 "Maximum iterations reached"([core.py:312](../tianshu/agent/core.py#L312)),是生硬截断。opencode 到达 step 上限时**注入一条提示 + 把 `tool_choice` 设成 `none`**,强制模型用纯文本把当前进展收尾。小改动,体验提升明显。~~ ✅ 已落地(2026-11-09)：最后一轮通过 provider 层传 `tool_choice="none"`（OpenAI）/ `tool_choice={"type":"none"}`（Anthropic），模型被迫用纯文本收尾。
 
 ---
 
@@ -104,7 +104,7 @@ opencode 里有几个**思路零成本、实现可轻量**的点,tianshu 可以�
 | ✅ P0 | 工具错误转结果不抛异常 | 新增 | 极低 |
 | ✅ P1 | 同 step 多工具并发(只读并发 + 写殿后) | 新增 | 低 |
 | ✅ P1 | Skill 改为注入式(弃 LLM 匹配 + 线性 Plan) | 第 5 节 | 中 |
-| P1 | Max-steps 优雅收尾(tool_choice=none) | 新增 | 极低 |
+| ✅ P1 | Max-steps 优雅收尾(tool_choice=none) | 新增 | 极低 |
 | P2 | 后台任务(bash background + 合成消息) | 第 9 节 | 中 |
 | P2 | 会话 history 落盘 + 执行 claim 恢复 | (替代废弃的 Plan 持久化) | 低 |
 | P2 | token 估算混合法 | O1 增强 | 极低 |

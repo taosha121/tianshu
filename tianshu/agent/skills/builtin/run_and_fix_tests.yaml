@@ -1,6 +1,0 @@
-name: run_and_fix_tests
-description: Run the test suite and fix all failing test cases
-steps:
-  - Run the project test suite and record all failing test names and error messages
-  - Analyze the root causes of failures and fix the code
-  - Run the tests again to confirm all pass

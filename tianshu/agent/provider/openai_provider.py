@@ -68,13 +68,16 @@ class OpenAIProvider(Provider):
             for t in tools
         ]
 
-    def call(self, client, model, system, messages, tool_schemas) -> ProviderResponse:
-        response = client.chat.completions.create(
-            model=model,
-            max_completion_tokens=8192,
-            messages=_to_api_messages(system, messages),
-            tools=tool_schemas,
-        )
+    def call(self, client, model, system, messages, tool_schemas, tool_choice=None) -> ProviderResponse:
+        kwargs: dict = {
+            "model": model,
+            "max_completion_tokens": 8192,
+            "messages": _to_api_messages(system, messages),
+            "tools": tool_schemas,
+        }
+        if tool_choice == "none":
+            kwargs["tool_choice"] = "none"
+        response = client.chat.completions.create(**kwargs)
         choice = response.choices[0]
         msg = choice.message
         text = msg.content or ""

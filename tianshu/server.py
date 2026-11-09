@@ -30,7 +30,7 @@ _sessions: dict[str, Agent] = {}
 # HTTP endpoint puts the response from the event loop.
 _permission_queues: dict[str, queue.Queue] = {}
 
-_SERVER_CWD: str = str(Path(__file__).parents[1])
+_SERVER_CWD: str = str(Path.cwd())
 
 
 class RunRequest(BaseModel):

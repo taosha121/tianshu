@@ -13,7 +13,8 @@ from tianshu.agent.provider import make_provider
 from tianshu.agent.skills import SkillLoader
 from tianshu.agent.tools import TOOLS
 
-load_dotenv()
+load_dotenv()  # local .env (cwd or parents) takes precedence
+load_dotenv(Path.home() / ".tianshu" / ".env")  # global fallback for pip-installed users
 
 from tianshu.agent._ctx import _step_ctx
 
@@ -176,9 +177,16 @@ def _build_system_prompt(cwd: str) -> str:
     except Exception:
         pass
 
-    skills_prompt = SkillLoader().to_prompt()
+    skills_prompt = SkillLoader(cwd=cwd).to_prompt()
     if skills_prompt:
         lines.append(skills_prompt)
+
+    for name in (".tianshu.md", ".claude.md", ".agent.md"):
+        instruction_file = p / name
+        if instruction_file.is_file():
+            content = instruction_file.read_text(encoding="utf-8").strip()
+            if content:
+                lines.append(f"\nProject instructions ({name}):\n{content}")
 
     return "\n".join(lines)
 
@@ -233,13 +241,15 @@ class Agent:
         _reactive_retries = 0
 
         for i in range(self._max_iterations):
+            is_last = i == self._max_iterations - 1
             self.history = self.context.prepare(
                 self.history, user_input, self._summarize_fn)
             system = self._system_prompt + self.longterm.to_system_prompt() + self.context.to_system_prompt()
 
             try:
                 response = self.provider.call(
-                    self.client, self.model, system, self.history, self._tool_schemas)
+                    self.client, self.model, system, self.history, self._tool_schemas,
+                    tool_choice="none" if is_last else None)
                 _reactive_retries = 0
             except Exception as err:
                 _is_too_long = any(
@@ -345,7 +355,7 @@ class Agent:
                     "isFinal": False,
                 })
 
-        return "Maximum iterations reached without completing the task."
+        return "Reached iteration limit without a clean finish."
 
     def _dispatch_tool(self, name: str, inp: dict, tool) -> str:
         # PreToolUse hooks: may rewrite input or block before anything runs.

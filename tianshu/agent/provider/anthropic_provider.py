@@ -46,14 +46,17 @@ class AnthropicProvider(Provider):
     def to_tool_schemas(self, tools: list) -> list:
         return [t.to_api_dict() for t in tools]
 
-    def call(self, client, model, system, messages, tool_schemas) -> ProviderResponse:
-        response = client.messages.create(
-            model=model,
-            max_tokens=8192,
-            system=system,
-            messages=_to_api_messages(messages),
-            tools=tool_schemas,
-        )
+    def call(self, client, model, system, messages, tool_schemas, tool_choice=None) -> ProviderResponse:
+        kwargs: dict = {
+            "model": model,
+            "max_tokens": 8192,
+            "system": system,
+            "messages": _to_api_messages(messages),
+            "tools": tool_schemas,
+        }
+        if tool_choice == "none":
+            kwargs["tool_choice"] = {"type": "none"}
+        response = client.messages.create(**kwargs)
         text = next(
             (b.text for b in response.content if getattr(b, "type", None) == "text"), ""
         )
