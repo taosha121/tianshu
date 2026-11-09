@@ -1,3 +1,4 @@
+import concurrent.futures
 import os
 import subprocess
 from collections.abc import Callable
@@ -8,7 +9,6 @@ from dotenv import load_dotenv
 from tianshu.agent.memory import ContextManager, LongTermMemory
 from tianshu.agent.hooks import HookRegistry, load_shell_hooks
 from tianshu.agent.permission import Decision, PermissionEngine
-from tianshu.agent.planner import PlanExecutor, Plan, Step
 from tianshu.agent.provider import make_provider
 from tianshu.agent.skills import SkillLoader
 from tianshu.agent.tools import TOOLS
@@ -49,6 +49,12 @@ def _format_tool_call(name: str, inp: dict) -> str:
 
 _MAX_ITERATIONS = 20
 _FINAL_STOPS = {"end_turn", "stop_sequence", "max_tokens", "pause_turn", "refusal"}
+
+# Read-only tools that are safe to run concurrently within a single tool_use batch.
+_CONCURRENT_TOOLS = {
+    "read_file", "list_files", "grep_files", "get_outline",
+    "find_symbol", "web_search", "web_fetch", "read_memory",
+}
 
 def _build_system_prompt(cwd: str) -> str:
     lines = [
@@ -170,6 +176,10 @@ def _build_system_prompt(cwd: str) -> str:
     except Exception:
         pass
 
+    skills_prompt = SkillLoader().to_prompt()
+    if skills_prompt:
+        lines.append(skills_prompt)
+
     return "\n".join(lines)
 
 
@@ -281,13 +291,39 @@ class Agent:
                 case _:
                     return response.text if response.text else f"[stopped: {response.stop_reason}]"
 
-            tool_results = []
-            for tc in response.tool_calls:
-                tool = self._tool_map.get(tc.name)
-                if self._emit:
+            # Emit all tool_call events up front so the UI shows the whole batch.
+            if self._emit:
+                for tc in response.tool_calls:
                     self._emit({"type": "tool_call", "id": tc.id, "name": tc.name, "input": tc.input})
 
-                result = self._dispatch_tool(tc.name, tc.input, tool)
+            # Same-batch calls carry no dependency on each other (the model
+            # sequences dependent calls across turns), so run the read-only ones
+            # concurrently and the side-effecting ones afterward in order. Order
+            # only matters for reassembling results, done by the in-order pass below.
+            results: dict[str, str] = {}
+
+            def _run(tc):
+                return tc.id, self._dispatch_tool(tc.name, tc.input, self._tool_map.get(tc.name))
+
+            readonly = [tc for tc in response.tool_calls if tc.name in _CONCURRENT_TOOLS]
+            serial = [tc for tc in response.tool_calls if tc.name not in _CONCURRENT_TOOLS]
+
+            if len(readonly) > 1:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=len(readonly)) as pool:
+                    for tc_id, res in pool.map(_run, readonly):
+                        results[tc_id] = res
+            else:
+                for tc in readonly:
+                    tc_id, res = _run(tc)
+                    results[tc_id] = res
+
+            for tc in serial:
+                tc_id, res = _run(tc)
+                results[tc_id] = res
+
+            tool_results = []
+            for tc in response.tool_calls:
+                result = results[tc.id]
                 if self._emit:
                     self._emit({"type": "tool_result", "id": tc.id, "result": str(result)[:2000]})
                 label = getattr(_step_ctx, "label", "")
@@ -330,22 +366,27 @@ class Agent:
                 return (f"[Permission denied by user] The user declined to run {name}. "
                         f"Do not retry; ask how they would like to proceed.")
 
-        if tool is None:
-            result = f"Unknown tool: {name}"
-        elif name == "todo_list_write":
-            self.todos = tool.func(**inp)
-            if self._emit:
-                self._emit({"type": "todo_updated", "agentId": self._agent_id,
-                            "agentType": self._agent_type, "todos": self.todos})
-            counts = {"pending": 0, "in_progress": 0, "completed": 0}
-            for t in self.todos:
-                counts[t["status"]] += 1
-            result = (f"Todos updated: {counts['completed']} completed, "
-                      f"{counts['in_progress']} in_progress, {counts['pending']} pending")
-        elif name == "invoke_subagent":
-            result = self._run_subagent(**inp)
-        else:
-            result = tool.func(**inp)
+        try:
+            if tool is None:
+                result = f"Unknown tool: {name}"
+            elif name == "todo_list_write":
+                self.todos = tool.func(**inp)
+                if self._emit:
+                    self._emit({"type": "todo_updated", "agentId": self._agent_id,
+                                "agentType": self._agent_type, "todos": self.todos})
+                counts = {"pending": 0, "in_progress": 0, "completed": 0}
+                for t in self.todos:
+                    counts[t["status"]] += 1
+                result = (f"Todos updated: {counts['completed']} completed, "
+                          f"{counts['in_progress']} in_progress, {counts['pending']} pending")
+            elif name == "invoke_subagent":
+                result = self._run_subagent(**inp)
+            else:
+                result = tool.func(**inp)
+        except Exception as e:
+            # Return the failure to the model so it can fix args or change course,
+            # rather than crashing the agent loop.
+            result = f"[Tool {name} failed] {type(e).__name__}: {e}"
 
         # PostToolUse hooks: may rewrite the result or trigger side effects.
         return self.hooks.run_post(name, inp, result)
@@ -373,23 +414,7 @@ class Agent:
     def execute(self, goal: str) -> str:
         if self._emit:
             self._emit({"type": "prompt_updated", "agentId": self._agent_id, "prompt": goal})
-        skill = SkillLoader().match(goal, self.provider, self.client, self.model)
-        if skill:
-            print(f"  [skill] matched: {skill.name}")
-            result = self.execute_skill(skill)
-        else:
-            result = self.chat(goal)
+        result = self.chat(goal)
         if self._emit:
             self._emit({"type": "agent_done", "agentId": self._agent_id, "status": "done"})
         return result
-
-    def execute_skill(self, skill) -> str:
-        steps = [Step(index=i, description=d) for i, d in enumerate(skill.steps)]
-        plan = Plan(goal=skill.description, steps=steps)
-        steps_summary = PlanExecutor(self).execute(plan)
-        synthesis_prompt = (
-            f"All subtasks have been completed. Here is a summary of what was done:\n\n"
-            f"{steps_summary}\n\n"
-            f"Based on the original goal and the completed work above, provide a comprehensive final response."
-        )
-        return self.chat(synthesis_prompt)

@@ -247,6 +247,19 @@ def invoke_subagent(goal: str, tools: list | None = None) -> str:
     return "invoke_subagent must be handled by the agent runtime"
 
 
+def use_skill(name: str) -> str:
+    from tianshu.agent.skills import SkillLoader
+    skill = SkillLoader().find(name)
+    if skill is None:
+        return f"Unknown skill: {name}"
+    lines = [f"Skill: {skill.name}", skill.description]
+    if skill.steps:
+        lines.append("\nSteps:")
+        lines += [f"  {i + 1}. {s}" for i, s in enumerate(skill.steps)]
+    lines.append("\nFollow these steps using your normal tools.")
+    return "\n".join(lines)
+
+
 TOOLS: list[Tool] = [
     Tool(
         name="read_file",
@@ -488,6 +501,23 @@ TOOLS: list[Tool] = [
             "required": ["goal"],
         },
         func=invoke_subagent,
+    ),
+    Tool(
+        name="use_skill",
+        description=(
+            "Load the full instructions for one of the available skills listed in your system "
+            "prompt. Call this when the user's request clearly matches a skill's described "
+            "workflow, then follow the returned steps using your normal tools. If nothing "
+            "matches, do not call this — just work directly."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "The exact skill name to load"},
+            },
+            "required": ["name"],
+        },
+        func=use_skill,
     ),
 ]
 

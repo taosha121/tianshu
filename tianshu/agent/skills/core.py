@@ -1,7 +1,5 @@
-import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 
 @dataclass
@@ -12,25 +10,6 @@ class Skill:
 
 
 _BUILTIN_DIR = Path(__file__).parent / "builtin"
-
-_MATCH_PROMPT = """\
-You are a skill router. Each skill below is a specific predefined workflow, not a general topic.
-Your default answer is null. Only return a skill when the user is clearly asking to run that exact workflow.
-
-User goal: {goal}
-
-Available skills:
-{skill_list}
-
-Rules:
-- Match only if the goal explicitly requests the skill's specific action on its specific object.
-  Both the action and the object must match, not just the general theme.
-- Casual verbs like "look at", "check", "show me", "explain", "understand" are NOT a request
-  to run a skill. "Look at the project structure" is exploration, not a code review.
-- When uncertain, return null. A wrong match is worse than no match.
-
-Return JSON only, format: {{"match": "skill_name"}} or {{"match": null}}
-"""
 
 
 class SkillLoader:
@@ -66,22 +45,17 @@ class SkillLoader:
     def find(self, name: str) -> "Skill | None":
         return next((s for s in self._load() if s.name == name), None)
 
-    def match(self, goal: str, provider: Any, client: Any, model: str) -> "Skill | None":
+    def to_prompt(self) -> str:
+        """Render the skill catalog for injection into the system prompt.
+
+        Empty string when no skills are registered, so the prompt stays clean.
+        """
         skills = self._load()
         if not skills:
-            return None
-        skill_list = "\n".join(f"  - {s.name}: {s.description}" for s in skills)
-        text = provider.complete(client, model, _MATCH_PROMPT.format(
-            goal=goal,
-            skill_list=skill_list,
-        ))
-        try:
-            start = text.find("{")
-            end = text.rfind("}") + 1
-            data = json.loads(text[start:end])
-            name = data.get("match")
-            if name:
-                return self.find(name)
-        except Exception:
-            pass
-        return None
+            return ""
+        lines = [
+            "\nAvailable skills — call use_skill(name) to load full instructions when the "
+            "user's request clearly matches one; otherwise ignore them:"
+        ]
+        lines += [f"  - {s.name}: {s.description}" for s in skills]
+        return "\n".join(lines)

@@ -1,11 +1,4 @@
-from conftest import FakeProvider
-
 from tianshu.agent.skills.core import SkillLoader
-
-
-def _match(goal, raw):
-    return SkillLoader().match(goal, FakeProvider(complete_text=raw),
-                               client=None, model="x")
 
 
 def test_builtin_skills_load():
@@ -17,18 +10,26 @@ def test_find_returns_none_for_unknown():
     assert SkillLoader().find("does_not_exist") is None
 
 
-def test_match_extracts_skill_from_noisy_json():
-    skill = _match("review my diff", 'Sure!\n{"match": "code_review"} done')
-    assert skill is not None and skill.name == "code_review"
+def test_to_prompt_lists_skills():
+    prompt = SkillLoader().to_prompt()
+    assert "use_skill" in prompt
+    assert "code_review" in prompt
 
 
-def test_match_null_returns_none():
-    assert _match("look at the project structure", '{"match": null}') is None
+def test_to_prompt_empty_without_skills(tmp_path):
+    loader = SkillLoader()
+    loader._skills = []  # simulate no registered skills
+    assert loader.to_prompt() == ""
 
 
-def test_match_invalid_json_returns_none():
-    assert _match("whatever", "not json at all") is None
+def test_use_skill_returns_instructions():
+    from tianshu.agent.tools.core import use_skill
+    out = use_skill("code_review")
+    assert "Skill: code_review" in out
+    assert "Steps:" in out
 
 
-def test_match_unknown_name_returns_none():
-    assert _match("whatever", '{"match": "ghost_skill"}') is None
+def test_use_skill_unknown():
+    from tianshu.agent.tools.core import use_skill
+    assert use_skill("ghost") == "Unknown skill: ghost"
+
